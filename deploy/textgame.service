@@ -1,0 +1,40 @@
+# ================================================
+# systemd service —— Gunicorn 进程守护
+# 部署后拷到 /etc/systemd/system/textgame.service
+# 然后：systemctl daemon-reload && systemctl enable textgame && systemctl start textgame
+# 查看日志：journalctl -u textgame -f
+# ================================================
+
+[Unit]
+Description=Text Game Engine (Gunicorn)
+After=network.target
+
+[Service]
+# 用 www-data 用户跑（Nginx 默认用户），权限隔离
+User=www-data
+Group=www-data
+
+# 工作目录
+WorkingDirectory=/opt/textgame
+
+# 环境变量 —— 生产 SECRET_KEY 在这里设（用你自己的强随机值替换）
+Environment="FLASK_DEBUG=false"
+Environment="GUNICORN_RUNNING=true"
+# 下面这行！生产环境必须换成你自己的强随机 secret_key！
+# 生成方法：python3 -c "import secrets; print(secrets.token_hex(32))"
+Environment="SECRET_KEY=CHANGE_ME_TO_A_STRONG_RANDOM_SECRET_KEY"
+
+# 启动命令
+ExecStart=/usr/local/bin/gunicorn -c /opt/textgame/deploy/gunicorn_config.py app:app
+
+# 自动重启
+Restart=always
+RestartSec=5
+
+# 日志（让 journalctl 能收到）
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=textgame
+
+[Install]
+WantedBy=multi-user.target

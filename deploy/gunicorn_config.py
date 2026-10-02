@@ -5,11 +5,12 @@ Gunicorn 生产配置 —— Ubuntu 服务器用
 import multiprocessing
 import os
 
-# 绑定本地 8000 端口（Nginx 反代到这里）
-bind = "127.0.0.1:8000"
+# 绑定本地 8001 端口（避开现有 uvicorn 的 8000 端口）
+bind = "127.0.0.1:8001"
 
-# Worker 数量：轻量应用，CPU核数 * 2 + 1，阿里云 1-2 核设 4 就够
-workers = 4
+# Worker 数量：MVP 阶段必须 1，多 worker 内存不共享导致 SessionManager 状态混乱
+# 以后用 SQLite/Redis 做共享状态后可以开多 worker
+workers = 1
 
 # Worker 类型：同步就行（Flask 处理 API 请求，不做长连接）
 worker_class = "sync"

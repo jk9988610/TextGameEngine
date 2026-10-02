@@ -78,6 +78,7 @@ class SessionManager:
             "scene_lock_states": {},
             "current_dialogue": None,
             "current_battle": None,
+            "killed_enemies": [],          # 🆕 被永久击杀的敌人 id（死了就不能复活）
             "player_hp": 50,
             "player_max_hp": 50,
             "player_attack": 5,

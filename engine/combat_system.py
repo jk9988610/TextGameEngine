@@ -31,16 +31,32 @@ class CombatSystem:
 
     # ---------- 事件回调 ----------
     def _on_scene_enter(self, scene_id: str, **kwargs) -> None:
-        """订阅 SCENE_ENTER：进场景 → 如果场景有活着的敌人 → 自动开战斗"""
+        """
+        订阅 SCENE_ENTER：进场景 → 如果场景有活着的敌人 → 自动开战斗
+        修复：
+        1. 读档时保留存档里的 enemy_hp，新开战斗才用满血
+        2. 敌人死了就真的死了（在 killed_enemies 里就跳过）
+        """
         enemies_here = self._get_scene_enemies(scene_id)
         if enemies_here:
-            # 当前 MVP 一个场景一个敌人，取第一个
             enemy = enemies_here[0]
-            self._state["current_battle"] = {
-                "enemy_id": enemy["id"],
-                "enemy_hp": enemy["hp"],
-            }
-            self._bus.publish("BATTLE_START", enemy_id=enemy["id"])
+
+            # 🆕 永久死亡检查：这个敌人已经被玩家打死过？
+            killed = self._state.get("killed_enemies", [])
+            if enemy["id"] in killed:
+                return  # 哥布林死了就不会再复活，什么都不做
+
+            existing = self._state.get("current_battle")
+            if existing and existing.get("enemy_id") == enemy["id"]:
+                # 存档里已有这个敌人的战斗状态 → 保留（不重置满血！）
+                pass
+            else:
+                # 新开战斗 → 用满血
+                self._state["current_battle"] = {
+                    "enemy_id": enemy["id"],
+                    "enemy_hp": enemy["hp"],
+                }
+                self._bus.publish("BATTLE_START", enemy_id=enemy["id"])
         else:
             self.end_battle()
 
@@ -135,6 +151,10 @@ class CombatSystem:
         if battle["enemy_hp"] <= 0:
             response["log"].append(f"💀 【{enemy['name']}】被你打倒了！")
             self._bus.publish("COMBAT_DEATH", dead=enemy["id"])
+            # 🆕 关键：标记永久死亡 → 以后再进洞穴不会复活了
+            self._state.setdefault("killed_enemies", [])
+            if enemy["id"] not in self._state["killed_enemies"]:
+                self._state["killed_enemies"].append(enemy["id"])
             # 战利品掉落（进场景物品池）
             current_scene = self._state["current_scene"]
             for item_id in enemy.get("reward_items", []):

@@ -98,16 +98,26 @@ def _get_engines():
 
 
 def _maybe_autosave(e: dict) -> None:
-    """自动存档：只在离线模式下生效，30 秒防抖"""
-    if e.get('_mode') != 'offline':
-        return
-    import time
+    """
+    自动存档：
+      - 离线模式 → slot_name="auto"（30 秒防抖，覆盖自己）
+      - 在线模式 → slot_name="online_auto"（每次操作都写，服务器实时存档）
+    三路隔离：auto(离线) / quick(离线快速) / slot_1~5(离线槽位) / online_auto(在线)
+    """
     sid = e['_sid']
-    now = time.time()
-    last = session.get('_last_autosave', 0)
-    if now - last >= 30:  # 30 秒才真正写磁盘一次
-        SM_SAVE.save_slot(sid, "auto", e["game_state"], is_auto=True)
-        session['_last_autosave'] = now
+    mode = e.get('_mode')
+
+    if mode == 'online':
+        # 在线模式：每次操作都自动写（服务器实时存档）
+        SM_SAVE.save_slot(sid, "online_auto", e["game_state"], is_auto=True)
+    else:
+        # 离线模式：30 秒防抖
+        import time
+        now = time.time()
+        last = session.get('_last_autosave', 0)
+        if now - last >= 30:
+            SM_SAVE.save_slot(sid, "auto", e["game_state"], is_auto=True)
+            session['_last_autosave'] = now
 
 
 # ============================================================
@@ -238,12 +248,15 @@ def auth_login():
 
 @app.route('/api/auth/logout', methods=['POST', 'GET'])
 def auth_logout():
-    """退出登录"""
+    """
+    退出登录 —— 只清在线登录态，保留离线隔离键 sid
+    sid 是离线模式用的存档隔离键，和在线登录态完全独立，不能清！
+    """
     session.pop('user_id', None)
     session.pop('username', None)
     session.pop('_last_autosave', None)
-    # 退出后默认切回离线模式（不强制，前端可以让用户选）
-    session['mode'] = 'offline'
+    session.pop('mode', None)       # 清掉 mode，让前端重新选
+    # session.pop('sid', None)      # ❌ 不要清！sid 是离线模式隔离键
     return jsonify({"success": True, "message": "👋 已退出登录"})
 
 
@@ -263,33 +276,94 @@ def auth_me():
 
 
 # ============================================================
-# 4. 存档路由（离线模式 + 在线模式都能用，隔离键不同）
+# 4. 存档路由
+#    在线模式：自动存档（online_auto），禁手动
+#    离线模式：auto（自动）/ quick（快速保存）/ slot_1~5（手动槽位）
 # ============================================================
 @app.route('/api/saves', methods=['GET'])
 def list_saves():
-    """列出当前隔离键的所有存档槽位"""
+    """
+    列出当前隔离键的所有存档槽位（带完整状态视图）
+    返回格式：{auto, quick, slots: [{slot_name, has_data, updated_at}]}
+    """
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+
+    # 从 DB 拉已有的存档记录
+    existing = {s["slot_name"]: s for s in SM_SAVE.list_slots(e['_sid'])}
+
+    if e['_mode'] == 'online':
+        # 在线模式只有 online_auto
+        online = existing.get("online_auto")
+        return jsonify({
+            "mode": "online",
+            "can_manual_save": False,
+            "online_auto": bool(online),
+            "online_auto_updated_at": online["updated_at"] if online else None,
+        })
+
+    # 离线模式：完整三路
+    auto = existing.get("auto")
+    quick = existing.get("quick")
+    slots = []
+    for i in range(1, 6):
+        sname = f"slot_{i}"
+        s = existing.get(sname)
+        slots.append({
+            "slot_name": sname,
+            "has_data": bool(s),
+            "updated_at": s["updated_at"] if s else None,
+        })
     return jsonify({
-        "mode": e['_mode'],
-        "slots": SM_SAVE.list_slots(e['_sid']),
+        "mode": "offline",
+        "can_manual_save": True,
+        "auto_has_data": bool(auto),
+        "auto_updated_at": auto["updated_at"] if auto else None,
+        "quick_has_data": bool(quick),
+        "quick_updated_at": quick["updated_at"] if quick else None,
+        "slots": slots,
     })
 
 
 @app.route('/api/save', methods=['POST'])
 def manual_save():
-    """手动存档到指定槽位"""
+    """
+    手动存档到指定槽位 —— 离线模式专属
+    在线模式返回 403（自动存档，不允许手动）
+    """
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
-    data = request.json
+
+    if e['_mode'] == 'online':
+        return jsonify({"success": False, "message": "⚠️ 在线模式自动存档，无需手动保存"}), 403
+
+    data = request.json or {}
     slot_name = (data.get("slot_name") or "slot_1").strip()
-    # 安全校验：只允许 slot_1 ~ slot_5 或 auto
-    if slot_name not in [f"slot_{i}" for i in range(1, 6)] and slot_name != "auto":
+    # 安全校验：只允许 slot_1 ~ slot_5
+    if slot_name not in [f"slot_{i}" for i in range(1, 6)]:
         return jsonify({"success": False, "message": "❌ 槽位名无效，可用：slot_1~slot_5"})
+
     result = SM_SAVE.save_slot(e['_sid'], slot_name, e["game_state"], is_auto=False)
-    # 保存后刷新 auto 存档时间戳
+    session['_last_autosave'] = 0
+    return jsonify(result)
+
+
+@app.route('/api/save/quick', methods=['POST'])
+def quick_save():
+    """
+    快速保存 —— 快捷键一键存，覆盖 quick 槽位
+    离线模式专属
+    """
+    e = _get_engines()
+    if not e:
+        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+
+    if e['_mode'] == 'online':
+        return jsonify({"success": False, "message": "⚠️ 在线模式自动存档，无需手动保存"}), 403
+
+    result = SM_SAVE.save_slot(e['_sid'], "quick", e["game_state"], is_auto=False)
     session['_last_autosave'] = 0
     return jsonify(result)
 
@@ -300,7 +374,8 @@ def load_save():
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
-    data = request.json
+
+    data = request.json or {}
     slot_name = data.get("slot_name", "").strip()
     if not slot_name:
         return jsonify({"success": False, "message": "❌ 请指定槽位名"})
@@ -320,11 +395,15 @@ def load_save():
 
 @app.route('/api/save', methods=['DELETE'])
 def delete_save():
-    """删除一个槽位的存档"""
+    """删除一个槽位的存档 —— 离线模式专属"""
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
-    data = request.json
+
+    if e['_mode'] == 'online':
+        return jsonify({"success": False, "message": "⚠️ 在线模式不允许删除存档"}), 403
+
+    data = request.json or {}
     slot_name = data.get("slot_name", "").strip()
     if not slot_name:
         return jsonify({"success": False, "message": "❌ 请指定槽位名"})
