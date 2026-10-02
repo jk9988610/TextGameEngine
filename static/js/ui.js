@@ -11,7 +11,6 @@ const modeBadge = document.getElementById('mode-badge');
 const onlineUserLabel = document.getElementById('online-user-label');
 const toggleSaveBtn = document.getElementById('toggle-save-btn');
 const logoutBtn = document.getElementById('logout-btn');
-const savePanel = document.getElementById('save-panel');
 const closeSaveBtn = document.getElementById('close-save-btn');
 
 // 全局：当前登录态
@@ -117,11 +116,11 @@ async function continueOfflineGame() {
 }
 
 function openLoadPanel() {
-    /** 载入游戏：直接打开存档管理面板 */
+    /** 载入游戏：直接打开存档管理弹窗 */
     localStorage.setItem('game_mode', 'offline');
     document.getElementById('offline-start-overlay').classList.add('hidden');
     enterOfflineGame();
-    toggleSaveBtn.click();
+    openSavePanel();
 }
 
 function enterOfflineGame() {
@@ -129,11 +128,10 @@ function enterOfflineGame() {
     modeOverlay.classList.add('hidden');
     authOverlay.classList.remove('active');
     document.getElementById('offline-start-overlay').classList.add('hidden');
-    modeBadge.textContent = '💻 离线模式';
-    modeBadge.className = 'mode-badge';
     onlineUserLabel.style.display = 'none';
     logoutBtn.style.display = 'none';
     toggleSaveBtn.style.display = '';
+    resetSceneHistory();  // 新档/读档 → 清空场景历史，避免错误的「← 返回」
     fetchState();  // 关键！加载场景/背包数据（之前漏了 → 空壳子）
 }
 
@@ -142,14 +140,13 @@ function enterOnlineGame() {
     modeOverlay.classList.add('hidden');
     authOverlay.classList.remove('active');
     localStorage.setItem('game_mode', 'online');
-    modeBadge.textContent = '🌐 在线模式';
-    modeBadge.className = 'mode-badge online-mode';
     if (_currentUser) {
         onlineUserLabel.textContent = '👤 ' + _currentUser.username;
         onlineUserLabel.style.display = '';
     }
     logoutBtn.style.display = '';
     toggleSaveBtn.style.display = 'none';  // 在线模式自动存档，不需要手动存
+    resetSceneHistory();
     fetchState();
 }
 
@@ -297,12 +294,15 @@ async function doQuickSave() {
 
 function openSavePanelFromMenu() {
     closeEscMenu();
-    toggleSaveBtn.click();
+    openSavePanel();
 }
 
-// ESC 键 → 切换菜单（和 ~ 键互斥）
+// ESC 键 → 优先关闭上层弹窗，否则切换菜单（和 ~ 键互斥）
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+        // 存档 / 背包弹窗打开时，ESC 先关它们
+        if (!saveOverlay.classList.contains('hidden')) { closeSavePanel(); return; }
+        if (!inventoryOverlay.classList.contains('hidden')) { closeInventory(); return; }
         // 只在游戏主界面时响应（不覆盖 mode/auth 面板）
         if (modeOverlay.classList.contains('hidden') &&
             !authOverlay.classList.contains('active') &&
@@ -322,12 +322,41 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// ---------- 存档面板逻辑 ----------
-toggleSaveBtn.addEventListener('click', async () => {
-    savePanel.classList.toggle('active');
-    if (savePanel.classList.contains('active')) await refreshSaveList();
+// ---------- 存档弹窗逻辑 ----------
+const saveOverlay = document.getElementById('save-overlay');
+
+function openSavePanel() {
+    /** 打开存档管理弹窗并刷新列表 */
+    saveOverlay.classList.remove('hidden');
+    refreshSaveList();
+}
+function closeSavePanel() {
+    saveOverlay.classList.add('hidden');
+}
+
+toggleSaveBtn.addEventListener('click', openSavePanel);
+closeSaveBtn.addEventListener('click', closeSavePanel);
+// 点遮罩空白处关闭
+saveOverlay.addEventListener('click', (e) => {
+    if (e.target === saveOverlay) closeSavePanel();
 });
-closeSaveBtn.addEventListener('click', () => savePanel.classList.remove('active'));
+
+// ---------- 背包弹窗逻辑 ----------
+const inventoryOverlay = document.getElementById('inventory-overlay');
+
+function openInventory() {
+    inventoryOverlay.classList.remove('hidden');
+}
+function closeInventory() {
+    inventoryOverlay.classList.add('hidden');
+}
+
+document.getElementById('toggle-inventory-btn').addEventListener('click', openInventory);
+document.getElementById('close-inventory-btn').addEventListener('click', closeInventory);
+// 点遮罩空白处关闭
+inventoryOverlay.addEventListener('click', (e) => {
+    if (e.target === inventoryOverlay) closeInventory();
+});
 
 async function refreshSaveList() {
     /** 从后端拉取存档列表并渲染（适配三路隔离） */
@@ -500,6 +529,10 @@ async function deleteSave(slotName) {
     showActionMsg(data.message);
     refreshSaveList();
 }
+
+// ---------- 底部状态栏按钮 ----------
+document.getElementById('btn-console').addEventListener('click', () => toggleConsole());
+document.getElementById('btn-menu').addEventListener('click', () => openEscMenu());
 
 // ---------- 暴露给 HTML 内联 onclick 的入口 ----------
 // 拆分后这些函数仍处于全局作用域，但显式挂到 window 可避免"函数找不到"，

@@ -123,18 +123,39 @@
         </div>
     </div>
 
-    <!-- 顶部标题栏 -->
+    <!-- 🆕 存档管理弹窗（点击 💾 存档 / ESC 菜单 → 存档管理 打开） -->
+    <div id="save-overlay" class="modal-overlay hidden">
+        <div class="save-panel" id="save-panel">
+            <h3>
+                📂 存档管理
+                <button id="close-save-btn" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;">✕</button>
+            </h3>
+            <div id="save-slots"></div>
+        </div>
+    </div>
+
+    <!-- 🆕 背包弹窗（点击顶部 🎒 背包 按钮打开） -->
+    <div id="inventory-overlay" class="modal-overlay hidden">
+        <div class="inventory" id="inventory-card">
+            <h3>
+                🎒 玩家背包
+                <button id="close-inventory-btn" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;">✕</button>
+            </h3>
+            <div class="items" id="player-inventory">
+                <span class="empty">（背包是空的）</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 顶部标题栏（薄） -->
     <header>
-        <h1>⚔️ 文字游戏引擎 MVP</h1>
-        <p>
-            点击操作即可游玩 |
-            按 <kbd style="background:#0f3460;padding:0.1rem 0.4rem;border-radius:3px;">~</kbd> 键打开控制台 |
-            按 <kbd style="background:#0f3460;padding:0.1rem 0.4rem;border-radius:3px;">ESC</kbd> 打开菜单
-            <span id="mode-badge" class="mode-badge" style="margin-left:1rem;"></span>
-            <span id="online-user-label" style="margin-left:0.5rem;display:none;color:#4ade80;font-size:0.8rem;"></span>
-            <button id="toggle-save-btn" class="action-btn" style="margin-left:1rem;padding:0.2rem 0.6rem;font-size:0.75rem;display:none;">💾 存档</button>
-            <button id="logout-btn" class="action-btn" style="padding:0.2rem 0.6rem;font-size:0.75rem;display:none;">🚪 退出</button>
-        </p>
+        <h1>⚔️ 文字游戏引擎</h1>
+        <div class="header-hints">
+            <span><kbd>~</kbd> 控制台</span>
+            <span><kbd>ESC</kbd> 菜单</span>
+            <span id="mode-badge" style="display:none;"></span>
+            <span id="online-user-label" style="display:none;"></span>
+        </div>
     </header>
 
     <!-- 主游戏区 -->
@@ -174,15 +195,6 @@
 
             <!-- 操作消息提示 -->
             <div class="message" id="action-message">欢迎来到文字游戏引擎！点击上面的按钮开始探索吧～</div>
-        </div>
-
-        <!-- 🆕 存档面板（默认隐藏，点💾存档按钮展开） -->
-        <div class="save-panel" id="save-panel">
-            <h3>
-                📂 存档管理
-                <button id="close-save-btn" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;">✕</button>
-            </h3>
-            <div id="save-slots"></div>
         </div>
 
         <!-- 🆕 NPC 对话面板（默认隐藏，有对话才显示） -->
@@ -226,17 +238,22 @@
             </div>
         </div>
 
-        <!-- 玩家背包 -->
-        <div class="inventory">
-            <h3>🎒 玩家背包</h3>
-            <div class="items" id="player-inventory">
-                <span class="empty">（背包是空的）</span>
-            </div>
-        </div>
     </main>
 
-    <!-- 底部提示 -->
-    <div class="footer-hint">💡 提示：按 ~ 键打开开发者控制台，可以用 teleport、add_item、save 等命令调试游戏</div>
+    <!-- 底部状态栏：左侧状态记录，右侧功能按钮 -->
+    <footer id="status-bar">
+        <div class="status-left">
+            <span id="status-scene">📍 —</span>
+            <span id="status-time"></span>
+        </div>
+        <div class="status-right">
+            <button id="toggle-inventory-btn" class="status-btn">🎒 背包</button>
+            <button id="toggle-save-btn" class="status-btn" style="display:none;">💾 存档</button>
+            <button id="btn-console" class="status-btn">⌨️ 控制台</button>
+            <button id="btn-menu" class="status-btn">⚙️ 菜单</button>
+            <button id="logout-btn" class="status-btn" style="display:none;">🚪 退出</button>
+        </div>
+    </footer>
 
     <!-- ========== 开发者控制台（默认隐藏） ========== -->
     <div id="dev-console">

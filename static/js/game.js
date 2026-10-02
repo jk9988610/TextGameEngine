@@ -5,14 +5,32 @@
 
 // ---------- 游戏后端交互 ----------
 
+// 场景切换历史：用于把"来时的那条出口"标成「← 返回」
+let _prevSceneId = null;       // 上一个场景（回头路的终点）
+let _lastSeenSceneId = null;   // 上一次拿到的场景，用于判断是否真的换了场景
+function resetSceneHistory() {
+    /** 开新档 / 读档 / 切换模式时清空场景历史 */
+    _prevSceneId = null;
+    _lastSeenSceneId = null;
+}
+
 async function fetchState() {
     /** 从后端拉取当前游戏状态并渲染 */
     const res = await fetch('/api/state');
     const data = await res.json();
 
-    // 渲染场景 + 游戏时间
-    document.getElementById('scene-name').textContent = data.scene.name + formatGameTime(data.game_time);
+    // 只有真的换了场景才记录"来处"（同一场景内拿物品等操作不算）
+    const currentId = data.scene.id;
+    if (_lastSeenSceneId && currentId !== _lastSeenSceneId) {
+        _prevSceneId = _lastSeenSceneId;
+    }
+    _lastSeenSceneId = currentId;
+
+    // 渲染场景：名字进卡片标题，时间进底部状态栏
+    document.getElementById('scene-name').textContent = data.scene.name;
     document.getElementById('scene-desc').textContent = data.scene.description;
+    document.getElementById('status-scene').textContent = '📍 ' + data.scene.name;
+    document.getElementById('status-time').textContent = formatGameTime(data.game_time);
 
     // 渲染可拿取物品 —— 空了就整块隐藏
     const itemsTitle = document.querySelector('.section-title:has(~ #items-list)');
@@ -31,7 +49,7 @@ async function fetchState() {
         });
     }
 
-    // 渲染可走出口 —— 空了就整块隐藏
+    // 渲染可走出口 —— 区分"来时的路（返回）"和"未探索的路（前往）"
     const exitsList = document.getElementById('exits-list');
     if (data.scene.exits.length === 0) {
         exitsList.parentElement.style.display = 'none';
@@ -40,13 +58,20 @@ async function fetchState() {
         exitsList.innerHTML = '';
         data.scene.exits.forEach(exit => {
             const btn = document.createElement('button');
-            btn.className = 'action-btn' + (exit.locked ? ' locked' : '');
             const targetName = SCENE_NAMES[exit.id] || exit.id;
-            btn.textContent = exit.locked
-                ? `🔒 ${targetName}（已锁定）`
-                : `🚶 前往：${targetName}`;
-            btn.disabled = exit.locked;
-            btn.onclick = () => doAction('move_scene', exit.id);
+            if (exit.locked) {
+                btn.className = 'action-btn locked';
+                btn.textContent = `🔒 ${targetName}`;
+                btn.disabled = true;
+            } else if (exit.id === _prevSceneId) {
+                btn.className = 'action-btn back';
+                btn.textContent = `← 返回：${targetName}`;
+                btn.onclick = () => doAction('move_scene', exit.id);
+            } else {
+                btn.className = 'action-btn forward';
+                btn.textContent = `→ 前往：${targetName}`;
+                btn.onclick = () => doAction('move_scene', exit.id);
+            }
             exitsList.appendChild(btn);
         });
     }
@@ -112,7 +137,7 @@ function formatGameTime(seconds) {
     const days = Math.floor(seconds / 86400) + 1;
     const hours = Math.floor((seconds % 86400) / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
-    return `  ⏳ 第${days}天 ${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
+    return `⏳ 第${days}天 ${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
 }
 
 // ---------- NPC 对话逻辑 ----------
