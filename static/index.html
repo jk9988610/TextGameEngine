@@ -10,7 +10,7 @@
     <!-- 模式选择覆盖层（首次进入显示，选完隐藏） -->
     <div id="mode-overlay">
         <h2>文字游戏引擎</h2>
-        <p class="mode-subtitle">选择你的游玩方式</p>
+        <p class="mode-subtitle">选择进入模式</p>
         <div class="mode-buttons">
             <div class="mode-card" onclick="chooseMode('offline')">
                 <div class="mode-title">离线模式</div>
@@ -28,6 +28,15 @@
                     服务器实时存档<br>
                     其他玩家名字会出现在同场景<br>
                     <span style="color:#e94560;font-size:0.75rem;">（暂未开放，敬请期待）</span>
+                </div>
+            </div>
+            <div class="mode-card editor" onclick="location.href='/static/editor.html'">
+                <div class="mode-title">编辑模式</div>
+                <div class="mode-desc">
+                    可视化制作游戏内容<br>
+                    编辑地点 / 物品 / 商店货物<br>
+                    修改自动备份，即改即玩<br>
+                    <span style="color:#4d9fff;font-size:0.75rem;">仅本地部署可用</span>
                 </div>
             </div>
         </div>
@@ -168,6 +177,12 @@
                 </div>
             </div>
 
+            <!-- 场景商店（花金币购买，无货物时整块隐藏） -->
+            <div class="interact-section" id="shop-section" style="display:none;">
+                <h3>商店</h3>
+                <div class="button-list" id="shop-list"></div>
+            </div>
+
             <!-- 可走的出口 -->
             <div class="interact-section">
                 <h3>可前往的出口</h3>
@@ -228,6 +243,7 @@
             <!-- 战斗按钮 -->
             <div class="combat-actions">
                 <button class="combat-btn" id="attack-btn">攻击！</button>
+                <div class="combat-items" id="combat-items"></div>
             </div>
         </div>
 
@@ -238,6 +254,7 @@
         <div class="status-left">
             <span id="status-scene">—</span>
             <span id="status-time"></span>
+            <span id="status-gold"></span>
         </div>
         <div class="status-right">
             <button id="toggle-inventory-btn" class="status-btn">背包</button>
@@ -257,7 +274,8 @@
         <div id="console-log">
             <div class="engine-output">欢迎来到开发者控制台！可用命令：</div>
             <div class="engine-output">  • teleport &lt;场景ID&gt;  传送到指定场景（tavern/forest/cave）</div>
-            <div class="engine-output">  • add_item &lt;物品ID&gt;  给背包添加物品（rusty_key/torch/gold_coin）</div>
+            <div class="engine-output">  • add_item &lt;物品ID&gt;  给背包添加物品（货币类物品折算金币）</div>
+            <div class="engine-output">  • buy [物品ID]     查看/购买当前场景商店的货物</div>
             <div class="engine-output">  • save              保存快照到 game_data/snapshot.json</div>
             <div class="engine-output">  • load              读取快照</div>
             <div class="engine-output">  • reset             重置游戏</div>

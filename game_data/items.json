@@ -12,7 +12,8 @@
   "gold_coin": {
     "id": "gold_coin",
     "name": "金币",
-    "description": "一枚闪闪发光的金币，能买不少东西。"
+    "description": "一枚闪闪发光的金币，能买不少东西。",
+    "currency_value": 1
   },
   "rusty_sword": {
     "id": "rusty_sword",
@@ -20,5 +21,17 @@
     "description": "一把布满锈迹的铁剑，剑身却依然锋利。",
     "is_weapon": true,
     "damage": 10
+  },
+  "healing_potion": {
+    "id": "healing_potion",
+    "name": "治疗药水",
+    "description": "恢复50点生命值",
+    "usable": true,
+    "heal": 50
+  },
+  "wolf_fur": {
+    "id": "wolf_fur",
+    "name": "狼皮",
+    "description": "狼的皮毛，可以 用来制作皮革装备"
   }
 }

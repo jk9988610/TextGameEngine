@@ -26,6 +26,7 @@ class SaveManager:
     FALLBACK_DEFAULTS: Dict[str, Any] = {
         "current_scene": "tavern",
         "player_inventory": [],
+        "player_gold": 0,
         "scene_item_states": {},
         "scene_lock_states": {},
         "current_dialogue": None,

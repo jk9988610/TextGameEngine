@@ -16,6 +16,7 @@ from .item_system import ItemSystem
 from .console_handler import ConsoleHandler
 from .npc_system import NPCSystem
 from .combat_system import CombatSystem
+from .shop_system import ShopSystem
 from .event_rules import DeclarativeRules
 
 
@@ -23,8 +24,10 @@ from .event_rules import DeclarativeRules
 DEFAULT_CONFIG: Dict[str, Any] = {
     "initial_scene": "tavern",
     "initial_inventory": [],
+    "initial_gold": 0,
     "player": {"hp": 50, "attack": 5, "defense": 2},
-    "action_time": {"move_scene": 300, "take_item": 20, "drop_item": 20, "combat_turn": 60},
+    "action_time": {"move_scene": 300, "take_item": 20, "drop_item": 20,
+                   "combat_turn": 60, "buy_item": 20},
     "event_rules": [],
 }
 
@@ -95,6 +98,7 @@ class SessionManager:
         game_state = {
             "current_scene": cfg["initial_scene"],
             "player_inventory": list(cfg["initial_inventory"]),
+            "player_gold": int(cfg.get("initial_gold", 0)),  # 金币余额（货币系统）
             "scene_item_states": {},
             "scene_lock_states": {},
             "current_dialogue": None,
@@ -111,7 +115,9 @@ class SessionManager:
         bus = EventBus()
         scene_manager = SceneManager(bus, gd, game_state)
         item_system = ItemSystem(bus, gd, game_state)
-        console_handler = ConsoleHandler(bus, gd, game_state, scene_manager, item_system)
+        shop_system = ShopSystem(bus, gd, game_state)
+        console_handler = ConsoleHandler(bus, gd, game_state, scene_manager,
+                                        item_system, shop_system=shop_system)
         npc_system = NPCSystem(bus, gd, game_state)
         combat_system = CombatSystem(bus, gd, game_state)
 
@@ -130,6 +136,7 @@ class SessionManager:
             "bus": bus,
             "scene_manager": scene_manager,
             "item_system": item_system,
+            "shop_system": shop_system,
             "console_handler": console_handler,
             "npc_system": npc_system,
             "combat_system": combat_system,
@@ -141,6 +148,13 @@ class SessionManager:
             return {info["state"]["game_state"].get("current_scene")
                     for info in self._sessions.values()
                     if info["state"]["game_state"].get("current_scene")}
+
+    def live_battle_enemies(self) -> set:
+        """所有存活会话中玩家正在与之战斗的敌人 id 集合（编辑器删敌人时做保护）"""
+        with self._lock:
+            return {info["state"]["game_state"]["current_battle"].get("enemy_id")
+                    for info in self._sessions.values()
+                    if info["state"]["game_state"].get("current_battle")}
 
     def refresh_new_scenes(self) -> None:
         """
@@ -159,6 +173,7 @@ class SessionManager:
         return {
             "current_scene": cfg["initial_scene"],
             "player_inventory": list(cfg["initial_inventory"]),
+            "player_gold": int(cfg.get("initial_gold", 0)),
             "scene_item_states": {},
             "scene_lock_states": {},
             "current_dialogue": None,

@@ -6,6 +6,20 @@
     "attack": 5,
     "defense": 2,
     "description": "一只皮糙肉厚的绿皮小怪物，正举着木棒虎视眈眈地盯着你。",
-    "reward_items": ["gold_coin"]
+    "reward_items": [
+      "gold_coin"
+    ]
+  },
+  "forest_wolf": {
+    "id": "forest_wolf",
+    "name": "森林野狼",
+    "hp": 30,
+    "attack": 5,
+    "defense": 2,
+    "description": "一匹凶猛的狼",
+    "reward_items": [
+      "wolf_fur"
+    ],
+    "reward_gold": 0
   }
 }

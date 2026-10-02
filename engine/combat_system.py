@@ -184,6 +184,12 @@ class CombatSystem:
                 self._state.setdefault("scene_item_states", {}).setdefault(current_scene, []).append(item_id)
                 item_name = self._data["items"][item_id]["name"]
                 response["log"].append(f"战利品掉落：【{item_name}】出现在地上！")
+            # 金币掉落（直接入余额，不占背包）
+            reward_gold = int(enemy.get("reward_gold", 0))
+            if reward_gold > 0:
+                self._state["player_gold"] = self._state.get("player_gold", 0) + reward_gold
+                response["log"].append(
+                    f"战利品：金币 +{reward_gold}（当前金币：{self._state['player_gold']}）")
             self.end_battle()
             response["success"] = True
             response["message"] = "战斗胜利！"
@@ -200,20 +206,83 @@ class CombatSystem:
         # 玩家死了？
         if new_hp <= 0:
             self._bus.publish("COMBAT_DEATH", dead="player")
-            response["log"].append("你被打倒了...")
-            # 玩家死亡：回酒馆满血复活，敌人重置（MVP 不做惩罚）
-            self._state["player_hp"] = self._state["player_max_hp"]
-            self._state["current_scene"] = "tavern"
-            self.end_battle()
-            response["success"] = False
-            response["message"] = "你被打倒了！被好心人救回了酒馆，满血复活。"
-            response["player_dead"] = True
+            self._handle_player_death(response)
             return response
 
         response["success"] = True
         response["message"] = "回合结束"
         response["player"] = self._get_player_stats()
         return response
+
+    def use_item_in_battle(self, item_id: str) -> Dict[str, Any]:
+        """战斗中使用消耗品（如喝治疗药水）：回血 + 消耗一瓶 + 敌人趁机反击一回合"""
+        response = {"success": False, "message": "", "log": []}
+        battle = self._state.get("current_battle")
+        if not battle:
+            response["message"] = "当前没有战斗"
+            return response
+
+        enemy = self._get_current_enemy()
+        if not enemy:
+            self.end_battle()
+            response["message"] = "敌人不见了"
+            return response
+
+        # 校验物品：在背包里 + 标记 usable
+        if item_id not in self._state.get("player_inventory", []):
+            response["message"] = "你没有这个物品"
+            return response
+        item = self._data.get("items", {}).get(item_id, {})
+        if not item.get("usable"):
+            response["message"] = f"【{item.get('name', item_id)}】不能在战斗中使用"
+            return response
+
+        # 回血（满血时拒绝，防止白白浪费一瓶）
+        heal = int(item.get("heal", 0))
+        if heal > 0:
+            hp = self._state.get("player_hp", 0)
+            max_hp = self._state.get("player_max_hp", hp)
+            if hp >= max_hp:
+                response["message"] = "生命值已满，不需要使用治疗药水"
+                return response
+            healed = min(heal, max_hp - hp)
+            self._state["player_hp"] = hp + healed
+            response["log"].append(
+                f"你喝下【{item.get('name', item_id)}】，恢复 **{healed}** 点生命！")
+
+        # 消耗一瓶，再发事件
+        self._state["player_inventory"].remove(item_id)
+        self._bus.publish("ITEM_USED", item_id=item_id, target_id=enemy["id"])
+
+        # 喝药占用一回合 → 敌人趁机反击
+        player = self._get_player_stats()
+        e_damage = self._damage(enemy["attack"], player["defense"])
+        new_hp = self._state["player_hp"] - e_damage
+        self._state["player_hp"] = new_hp
+        response["log"].append(
+            f"【{enemy['name']}】趁机反击，对你造成 **{e_damage}** 点伤害！")
+        self._bus.publish("COMBAT_DAMAGE", attacker=enemy["id"], defender="player", damage=e_damage)
+
+        if new_hp <= 0:
+            self._bus.publish("COMBAT_DEATH", dead="player")
+            self._handle_player_death(response)
+            return response
+
+        response["success"] = True
+        response["message"] = "回合结束"
+        response["player"] = self._get_player_stats()
+        return response
+
+    def _handle_player_death(self, response: Dict[str, Any]) -> None:
+        """玩家被打倒的统一处理：回酒馆满血复活，结束战斗（MVP 无惩罚）"""
+        response["log"].append("你被打倒了...")
+        # 玩家死亡：回酒馆满血复活，敌人重置（MVP 不做惩罚）
+        self._state["player_hp"] = self._state["player_max_hp"]
+        self._state["current_scene"] = "tavern"
+        self.end_battle()
+        response["success"] = False
+        response["message"] = "你被打倒了！被好心人救回了酒馆，满血复活。"
+        response["player_dead"] = True
 
     def end_battle(self) -> None:
         """手动结束战斗"""

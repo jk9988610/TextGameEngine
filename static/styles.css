@@ -487,6 +487,19 @@ main {
 .combat-btn:disabled { background: #555; cursor: not-allowed; }
 .combat-btn.flee { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text); }
 .combat-btn.flee:hover { background: var(--bg-hover); }
+.combat-items { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.combat-item-btn {
+    background: var(--bg-elevated);
+    border: 1px solid #d4a72c;
+    color: #e8c66a;
+    padding: 0.4rem 0.7rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.78rem;
+    transition: background 0.15s;
+}
+.combat-item-btn:hover { background: rgba(212, 167, 44, 0.18); }
 
 /* ========== 开发者控制台 ========== */
 #dev-console {
@@ -600,6 +613,7 @@ main {
 .mode-card .mode-desc { font-size: 0.78rem; color: var(--text-dim); line-height: 1.6; }
 .mode-card.online { border-color: var(--border); }
 .mode-card.online:hover { border-color: var(--ok); }
+.mode-card.editor:hover { border-color: #4d9fff; }
 
 /* ========== 登录/注册覆盖层 ========== */
 #auth-overlay {
@@ -806,3 +820,22 @@ main {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+/* ========== M3：金币 / 商店 / 背包使用按钮 ========== */
+.status-left #status-gold { color: #d4a72c; white-space: nowrap; font-weight: 600; }
+.action-btn.shop { border-color: rgba(212,167,44,0.55); }
+.action-btn.shop:hover { border-color: #d4a72c; background: rgba(212,167,44,0.12); }
+.inventory .item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.inventory .item .item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-use-btn {
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--accent, #4d9fff);
+    color: var(--accent, #4d9fff);
+    padding: 0.08rem 0.55rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.72rem;
+}
+.item-use-btn:hover { background: rgba(77,159,255,0.15); }

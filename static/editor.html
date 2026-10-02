@@ -21,6 +21,7 @@
             <div class="ed-tabs">
                 <button class="ed-tab active" data-tab="scenes" type="button">地点</button>
                 <button class="ed-tab" data-tab="items" type="button">物品</button>
+                <button class="ed-tab" data-tab="enemies" type="button">敌人</button>
             </div>
             <button class="ed-btn block" id="btn-new" type="button">+ 新建</button>
             <div class="ed-list" id="ed-list"></div>
@@ -54,14 +55,21 @@
                 </div>
 
                 <div class="ed-field">
-                    <span>初始放置的物品（新游戏开始时地上就有）</span>
+                    <span>初始放置的物品（新游戏开始时地上就有，可免费拾取）</span>
                     <div class="ed-check-group" id="scene-items"></div>
                 </div>
 
-                <label class="ed-field">
-                    <span>敌人 ID（逗号分隔；敌人编辑功能将在后续里程碑开放）</span>
-                    <input type="text" id="scene-enemies" placeholder="例：cave_goblin">
-                </label>
+                <div class="ed-field">
+                    <span>商店货物（玩家花金币购买，无限供应；勾选后填价格，0 = 免费领取）</span>
+                    <div class="ed-check-group" id="scene-shop"></div>
+                </div>
+
+                <div class="ed-field">
+                    <span>出没的敌人（勾选已创建的敌人；指向还没建的敌人时填下面的 ID 框）</span>
+                    <div class="ed-check-group" id="scene-enemies"></div>
+                    <input type="text" id="scene-enemies-raw"
+                           placeholder="其他敌人 ID（指向还没建的敌人时用，逗号分隔）">
+                </div>
 
                 <div class="ed-form-actions">
                     <button type="button" class="ed-btn primary" id="scene-save">保存</button>
@@ -93,11 +101,72 @@
                     <span>伤害值</span>
                     <input type="number" id="item-damage" min="0" step="1" value="5">
                 </label>
+                <label class="ed-check">
+                    <input type="checkbox" id="item-usable">
+                    <span>可使用（消耗品，例如治疗药水，使用后从背包消耗一瓶）</span>
+                </label>
+                <label class="ed-field hidden" id="item-heal-field">
+                    <span>使用后恢复的生命值（0 = 不回血）</span>
+                    <input type="number" id="item-heal" min="0" step="1" value="50">
+                </label>
+                <label class="ed-check">
+                    <input type="checkbox" id="item-currency">
+                    <span>这是货币类物品（拾取/获得后不进背包，自动折算成金币余额）</span>
+                </label>
+                <label class="ed-field hidden" id="item-currency-field">
+                    <span>面值（一枚折算多少金币）</span>
+                    <input type="number" id="item-currency-value" min="1" step="1" value="1">
+                </label>
 
                 <div class="ed-form-actions">
                     <button type="button" class="ed-btn primary" id="item-save">保存</button>
                     <button type="button" class="ed-btn danger hidden" id="item-delete">删除</button>
                     <button type="button" class="ed-btn" id="item-cancel">取消</button>
+                </div>
+            </form>
+
+            <!-- 敌人表单 -->
+            <form class="ed-form hidden" id="form-enemy">
+                <h2 id="enemy-form-title">新建敌人</h2>
+                <label class="ed-field">
+                    <span>敌人 ID（小写字母/数字/下划线，保存后不可改）</span>
+                    <input type="text" id="enemy-id" placeholder="例：forest_wolf">
+                </label>
+                <label class="ed-field">
+                    <span>名称</span>
+                    <input type="text" id="enemy-name" placeholder="例：森林野狼">
+                </label>
+                <label class="ed-field">
+                    <span>描述（玩家挑战前看到的文字）</span>
+                    <textarea id="enemy-desc" rows="3" placeholder="例：一匹眼露凶光的灰狼，獠牙上挂着口水。"></textarea>
+                </label>
+                <div class="ed-field-row">
+                    <label class="ed-field">
+                        <span>生命值 HP</span>
+                        <input type="number" id="enemy-hp" min="1" step="1" value="30">
+                    </label>
+                    <label class="ed-field">
+                        <span>攻击力</span>
+                        <input type="number" id="enemy-attack" min="0" step="1" value="5">
+                    </label>
+                    <label class="ed-field">
+                        <span>防御力</span>
+                        <input type="number" id="enemy-defense" min="0" step="1" value="2">
+                    </label>
+                    <label class="ed-field">
+                        <span>金币掉落（0 = 不掉金币）</span>
+                        <input type="number" id="enemy-gold" min="0" step="1" value="0">
+                    </label>
+                </div>
+                <div class="ed-field">
+                    <span>战利品（击杀后掉落在地上，需要玩家拾取；货币类物品会自动折算金币）</span>
+                    <div class="ed-check-group" id="enemy-rewards"></div>
+                </div>
+
+                <div class="ed-form-actions">
+                    <button type="button" class="ed-btn primary" id="enemy-save">保存</button>
+                    <button type="button" class="ed-btn danger hidden" id="enemy-delete">删除</button>
+                    <button type="button" class="ed-btn" id="enemy-cancel">取消</button>
                 </div>
             </form>
         </section>

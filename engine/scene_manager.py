@@ -59,12 +59,26 @@ class SceneManager:
             "name": scene["name"],
             "description": scene["description"],
             "exits": [
-                {"id": exit_id, "locked": locks_state.get(exit_id, False)}
+                {
+                    "id": exit_id,
+                    "name": self._data["scenes"].get(exit_id, {}).get("name", exit_id),
+                    "locked": locks_state.get(exit_id, False),
+                }
                 for exit_id in scene.get("exits", [])
             ],
             "items_here": [
                 {"id": item_id, "name": self._data["items"].get(item_id, {}).get("name", item_id)}
                 for item_id in items_state
+            ],
+            "shop_items": [
+                {
+                    "id": g.get("item_id", ""),
+                    "name": self._data["items"].get(g.get("item_id", ""), {}).get(
+                        "name", g.get("item_id", "")),
+                    "price": int(g.get("price", 0)),
+                }
+                for g in scene.get("shop_items", [])
+                if g.get("item_id") in self._data["items"]
             ]
         }
 

@@ -1,29 +1,87 @@
 {
   "tavern": {
     "id": "tavern",
-    "name": "破旧的酒馆",
+    "name": "酒馆",
     "description": "你站在昏暗的酒馆里，地板上散落着几个空酒杯。炉火噼啪作响，角落里有个醉汉在打鼾。",
-    "exits": ["forest"],
-    "items_here": ["rusty_sword"],
+    "exits": [
+      "forest",
+      "potion_store",
+      "star_city"
+    ],
+    "items_here": [
+      "rusty_sword"
+    ],
     "locked_exits": {},
-    "enemies_here": []
+    "enemies_here": [],
+    "shop_items": []
   },
   "forest": {
     "id": "forest",
-    "name": "幽暗的森林",
+    "name": "森林",
     "description": "你走进了茂密的森林，阳光被层层树叶遮挡，只能听到虫鸣鸟叫。一棵老橡树下好像有什么东西。",
-    "exits": ["tavern", "cave"],
-    "items_here": ["rusty_key"],
-    "locked_exits": {"cave": true},
-    "enemies_here": []
+    "exits": [
+      "cave",
+      "tavern"
+    ],
+    "items_here": [
+      "rusty_key"
+    ],
+    "locked_exits": {
+      "cave": true
+    },
+    "enemies_here": [
+      "forest_wolf"
+    ],
+    "shop_items": []
   },
   "cave": {
     "id": "cave",
     "name": "神秘的洞穴",
     "description": "洞穴里一片漆黑，但你能听到远处传来滴水声。这里好像藏着什么秘密...还有什么东西在靠近！",
-    "exits": ["forest"],
-    "items_here": ["gold_coin", "torch"],
+    "exits": [
+      "forest"
+    ],
+    "items_here": [
+      "gold_coin",
+      "torch"
+    ],
     "locked_exits": {},
-    "enemies_here": ["cave_goblin"]
+    "enemies_here": [
+      "cave_goblin"
+    ],
+    "shop_items": []
+  },
+  "potion_store": {
+    "id": "potion_store",
+    "name": "药水店",
+    "description": "柜台后摆着一排排瓶瓶罐罐，店主正擦拭着玻璃杯。货架上的治疗药水明码标价，金币足够就能买。",
+    "exits": [
+      "star_city",
+      "tavern"
+    ],
+    "items_here": [
+      "healing_potion"
+    ],
+    "locked_exits": {},
+    "enemies_here": [],
+    "shop_items": [
+      {
+        "item_id": "healing_potion",
+        "price": 1
+      }
+    ]
+  },
+  "star_city": {
+    "id": "star_city",
+    "name": "星之城",
+    "description": "一座富裕的城池，物产丰富，车水马龙。",
+    "exits": [
+      "tavern",
+      "potion_store"
+    ],
+    "items_here": [],
+    "locked_exits": {},
+    "enemies_here": [],
+    "shop_items": []
   }
 }

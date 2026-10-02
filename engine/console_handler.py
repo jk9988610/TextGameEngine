@@ -12,7 +12,8 @@ class ConsoleHandler:
     """开发者控制台命令处理器 —— 所有文字游戏通用"""
 
     def __init__(self, event_bus, game_data: Dict, game_state: Dict,
-                 scene_manager, item_system, save_path: str = "game_data/snapshot.json"):
+                 scene_manager, item_system, save_path: str = "game_data/snapshot.json",
+                 shop_system=None):
         """
         构造函数注入所有依赖
         :param event_bus: 共享的 EventBus 实例
@@ -21,12 +22,14 @@ class ConsoleHandler:
         :param scene_manager: SceneManager 实例（处理 teleport 等场景命令）
         :param item_system: ItemSystem 实例（处理 add_item 等物品命令）
         :param save_path: 快照存储路径
+        :param shop_system: ShopSystem 实例（处理 buy 购买命令，可选）
         """
         self._bus = event_bus
         self._data = game_data
         self._state = game_state
         self._sm = scene_manager
         self._item = item_system
+        self._shop = shop_system
         self._save_path = save_path
 
     # ---------- 命令解析入口 ----------
@@ -48,6 +51,7 @@ class ConsoleHandler:
             "teleport": self._cmd_teleport,
             "add_item": self._cmd_add_item,
             "drop_item": self._cmd_drop_item,
+            "buy": self._cmd_buy,
             "save": self._cmd_save,
             "load": self._cmd_load,
             "reset": self._cmd_reset,
@@ -77,6 +81,18 @@ class ConsoleHandler:
         if not args:
             return "错误：用法：drop_item <物品ID>"
         result = self._item.drop_item(args[0])
+        return result["message"]
+
+    def _cmd_buy(self, args: list) -> str:
+        """在当前场景的商店购买物品：buy <物品ID>"""
+        if self._shop is None:
+            return "错误：商店系统未启用"
+        goods = self._shop.list_shop_items()
+        if not args:
+            if not goods:
+                return "错误：这里没有商店。用法：buy <物品ID>"
+            return "在售商品：" + "；".join(f"{g['id']}（{g['price']}金币）" for g in goods)
+        result = self._shop.buy_item(args[0])
         return result["message"]
 
     def _cmd_save(self, args: list) -> str:
@@ -117,6 +133,7 @@ class ConsoleHandler:
         self._state["current_dialogue"] = None
         self._state["killed_enemies"] = []      # 敌人全复活
         self._state["game_time"] = 0            # 时间归零
+        self._state["player_gold"] = int(cfg.get("initial_gold", 0))  # 金币归零
         player_cfg = cfg.get("player", {})
         initial_hp = player_cfg.get("hp", self._state.get("player_max_hp", 50))
         self._state["player_hp"] = initial_hp
@@ -132,8 +149,9 @@ class ConsoleHandler:
         return (
             "可用命令：\n"
             "  teleport <场景ID>  传送（跳过出口检查）\n"
-            "  add_item <物品ID>  加物品到背包\n"
+            "  add_item <物品ID>  加物品到背包（货币类物品折算金币）\n"
             "  drop_item <物品ID> 丢物品到当前场景\n"
+            "  buy [物品ID]     查看/购买当前场景商店的货物\n"
             "  save              保存快照\n"
             "  load              读取快照\n"
             "  reset             重置游戏\n"

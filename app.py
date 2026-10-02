@@ -156,6 +156,7 @@ def get_state():
     return jsonify({
         "scene": e["scene_manager"].get_current_scene(),
         "player_inventory": e["item_system"].get_player_inventory(),
+        "player_gold": e["game_state"].get("player_gold", 0),
         "game_time": e["game_state"].get("game_time", 0),
         "npcs_here": e["npc_system"].list_npcs_in_scene(scene_id),      # 🆕 场景里的 NPC
         "enemies_here": e["combat_system"].list_enemies_in_scene(scene_id),  # 🆕 场景里的敌人
@@ -199,6 +200,8 @@ def handle_action():
         result = e["item_system"].take_item(action_target)
     elif action_type == "move_scene":
         result = e["scene_manager"].move_to(action_target)
+    elif action_type == "buy_item":
+        result = e["shop_system"].buy_item(action_target)
     elif action_type == "use_item":
         result = e["item_system"].use_item(action_target, data.get("target_id"))
     else:
@@ -246,7 +249,14 @@ def get_combat():
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
-    return jsonify(e["combat_system"].get_battle_for_api())
+    result = e["combat_system"].get_battle_for_api()
+    # 战斗中：附带背包里可使用的消耗品（给战斗面板渲染"喝药"按钮）
+    if result.get("active"):
+        result["usable_items"] = [
+            it for it in e["item_system"].get_player_inventory()
+            if it.get("usable")
+        ]
+    return jsonify(result)
 
 
 @app.route('/api/combat/attack', methods=['POST'])
@@ -256,13 +266,26 @@ def handle_attack():
         return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     # 前端无需指定武器：不传时自动使用背包中第一把武器（引擎不绑定具体物品 ID）
-    weapon_id = (data.get("weapon_id") or "").strip()
-    if not weapon_id:
-        weapon_id = e["item_system"].first_weapon_id()
+    weapon_id = data.get("weapon_id") or e["item_system"].first_weapon_id()
     result = e["combat_system"].player_attack(weapon_id)
     # 战斗推进游戏时间（每回合秒数由 game_config 配置）
     e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + _action_time("combat_turn", 60)
     # 🆕 战斗后也自动存档
+    if result.get("success") or result.get("player_dead"):
+        _maybe_autosave(e)
+    return jsonify(result)
+
+
+@app.route('/api/combat/use-item', methods=['POST'])
+def handle_combat_use_item():
+    """战斗中使用消耗品（喝药算一回合，敌人会趁机反击）"""
+    e = _get_engines()
+    if not e:
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
+    data = request.json or {}
+    result = e["combat_system"].use_item_in_battle(data.get("item_id", ""))
+    # 与攻击回合同等耗时
+    e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + _action_time("combat_turn", 60)
     if result.get("success") or result.get("player_dead"):
         _maybe_autosave(e)
     return jsonify(result)
@@ -484,6 +507,7 @@ def editor_get_data():
         "success": True,
         "scenes": GAME_DATA["scenes"],
         "items": GAME_DATA["items"],
+        "enemies": GAME_DATA["enemies"],
         "initial_scene": (GAME_DATA.get("config") or {}).get("initial_scene", ""),
     })
 
@@ -524,18 +548,44 @@ def editor_upsert_item():
         return denied
     payload = request.json or {}
     result = EDITOR.upsert_item(
-        GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA.get("config") or {}, payload)
+        GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA["enemies"],
+        GAME_DATA.get("config") or {}, payload)
     return jsonify(result)
 
 
 @app.route('/api/editor/item/<item_id>', methods=['DELETE'])
 def editor_delete_item(item_id):
-    """删除一个物品（被地点放置/初始背包引用时拒绝）"""
+    """删除一个物品（被地点放置/商店售卖/敌人掉落/初始背包引用时拒绝）"""
     denied = _editor_guard()
     if denied:
         return denied
     result = EDITOR.delete_item(
-        GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA.get("config") or {}, item_id)
+        GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA["enemies"],
+        GAME_DATA.get("config") or {}, item_id)
+    return jsonify(result)
+
+
+@app.route('/api/editor/enemy', methods=['POST'])
+def editor_upsert_enemy():
+    """新建/更新一个敌人（属性/掉落物品/金币掉落，按 id 区分新建与编辑）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    payload = request.json or {}
+    result = EDITOR.upsert_enemy(
+        GAME_DATA["items"], GAME_DATA["enemies"], payload)
+    return jsonify(result)
+
+
+@app.route('/api/editor/enemy/<enemy_id>', methods=['DELETE'])
+def editor_delete_enemy(enemy_id):
+    """删除一个敌人（被场景引用/有玩家正在战斗时拒绝）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    result = EDITOR.delete_enemy(
+        GAME_DATA["scenes"], GAME_DATA["enemies"], enemy_id,
+        live_battle_ids=SM.live_battle_enemies())
     return jsonify(result)
 
 
