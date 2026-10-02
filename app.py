@@ -3,7 +3,7 @@
 架构：SessionManager 管理每个玩家浏览器会话的独立引擎实例
       GAME_DATA 全局只读共享，game_state 按 session_id 完全隔离
 """
-from flask import Flask, request, jsonify, send_from_directory, session
+from flask import Flask, request, jsonify, send_from_directory, session, redirect
 import json
 import os
 import uuid
@@ -125,7 +125,10 @@ def _maybe_autosave(e: dict) -> None:
 # ============================================================
 @app.route('/')
 def serve_index():
-    return send_from_directory('static', 'index.html')
+    # 前端已拆分为 index.html + styles.css + js/*，静态资源统一挂在 /static/ 下。
+    # 根路径重定向到 /static/index.html，保证页面里的相对路径（styles.css、js/*.js）
+    # 能正确解析；GitHub Pages 直接访问 /static/index.html 也与之一致。
+    return redirect('/static/index.html')
 
 
 @app.route('/api/state', methods=['GET'])
@@ -133,10 +136,37 @@ def get_state():
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+    scene_id = e["game_state"].get("current_scene", "")
     return jsonify({
         "scene": e["scene_manager"].get_current_scene(),
         "player_inventory": e["item_system"].get_player_inventory(),
+        "game_time": e["game_state"].get("game_time", 0),
+        "npcs_here": e["npc_system"].list_npcs_in_scene(scene_id),      # 🆕 场景里的 NPC
+        "enemies_here": e["combat_system"].list_enemies_in_scene(scene_id),  # 🆕 场景里的敌人
     })
+
+
+# ---------- 🆕 主动触发对话/战斗的路由 ----------
+@app.route('/api/dialogue/start', methods=['POST'])
+def start_dialogue():
+    """玩家点"和 XX 说话" → 手动启动对话"""
+    e = _get_engines()
+    if not e:
+        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+    data = request.json
+    result = e["npc_system"].start_dialogue(data.get("npc_id", ""))
+    return jsonify(result)
+
+
+@app.route('/api/combat/start', methods=['POST'])
+def start_combat():
+    """玩家点"挑战 XX" → 手动开始/继续战斗（保留敌人残血）"""
+    e = _get_engines()
+    if not e:
+        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+    data = request.json
+    result = e["combat_system"].start_battle(data.get("enemy_id", ""))
+    return jsonify(result)
 
 
 @app.route('/api/action', methods=['POST'])
@@ -157,6 +187,11 @@ def handle_action():
         result = e["item_system"].use_item(action_target, data.get("target_id"))
     else:
         result = {"success": False, "message": f"❌ 未知操作类型：{action_type}"}
+
+    # 🆕 玩家做了操作 → 推进游戏时间（最简单：每种操作固定秒数）
+    if result.get("success"):
+        time_delta = {"move_scene": 300, "take_item": 20, "drop_item": 20}.get(action_type, 0)
+        e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + time_delta
 
     # 🆕 玩家做了操作 → 尝试自动存档（离线模式 + 30秒防抖）
     if result.get("success"):
@@ -205,6 +240,8 @@ def handle_attack():
         return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
     data = request.json
     result = e["combat_system"].player_attack(data.get("weapon_id", ""))
+    # 🆕 战斗推进游戏时间（1分钟/回合）
+    e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + 60
     # 🆕 战斗后也自动存档
     if result.get("success") or result.get("player_dead"):
         _maybe_autosave(e)

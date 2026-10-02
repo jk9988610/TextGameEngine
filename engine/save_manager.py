@@ -131,7 +131,8 @@ class SaveManager:
             "scene_lock_states": {},
             "current_dialogue": None,
             "current_battle": None,
-            "killed_enemies": [],          # 🆕 兼容老存档：死敌追踪
+            "killed_enemies": [],          # 兼容老存档：死敌追踪
+            "game_time": 0,                # 🆕 游戏内时间
             "player_hp": 50,
             "player_max_hp": 50,
             "player_attack": 5,

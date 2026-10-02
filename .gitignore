@@ -1,0 +1,48 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ===== 虚拟环境 =====
+venv/
+.venv/
+env/
+ENV/
+
+# ===== 运行时数据库（含用户账号/存档，不入库）=====
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== 部署打包 / 压缩包 =====
+*.tar.gz
+*.zip
+
+# ===== 测试残留（cookie jar 等）=====
+jar*.txt
+debug*.py
+test_*.py
+
+# ===== 日志 / 临时文件 =====
+*.log
+*.bak
+*.tmp
+tmp/
+
+# ===== 环境变量 / 密钥 =====
+.env
+.env.*
+*.key
+*.pem
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

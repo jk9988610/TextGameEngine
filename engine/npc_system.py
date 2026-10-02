@@ -31,21 +31,47 @@ class NPCSystem:
 
     # ---------- 事件回调（纯被动，不主动调用） ----------
     def _on_scene_enter(self, scene_id: str, **kwargs) -> None:
-        """订阅 SCENE_ENTER：进入场景 → 找场景里的第一个 NPC → 自动开始对话"""
-        npc = self._find_first_npc_in_scene(scene_id)
-        if npc:
-            self._state["current_dialogue"] = {
-                "npc_id": npc["id"],
-                "node_id": npc["greeting"],
-            }
-            # 也发布 NPC_TALK 事件（后续战斗系统等可以订阅）
-            self._bus.publish("NPC_TALK", npc_id=npc["id"], node_id=npc["greeting"])
-        else:
-            self.end_dialogue()
+        """🆕 进场景不再自动开对话！只清掉跨场景残留的对话"""
+        self.end_dialogue()
 
     def _on_scene_leave(self, scene_id: str, **kwargs) -> None:
-        """订阅 SCENE_LEAVE：离开场景 → 清空对话状态"""
+        """离开场景 → 清空对话状态"""
         self.end_dialogue()
+
+    # ---------- 🆕 主动触发接口（给前端按钮点时调用） ----------
+    def start_dialogue(self, npc_id: str) -> Dict[str, Any]:
+        """玩家点"和 XX 说话"按钮 → 手动启动对话"""
+        npc = self._get_npc(npc_id)
+        if not npc:
+            return {"success": False, "message": "❌ NPC 不存在"}
+        node_id = self._pick_greeting(npc)
+        self._state["current_dialogue"] = {"npc_id": npc_id, "node_id": node_id}
+        self._bus.publish("NPC_TALK", npc_id=npc_id, node_id=node_id)
+        return {"success": True, "message": "✅ 对话已开始"}
+
+    def _pick_greeting(self, npc: Dict) -> str:
+        """根据 game_state 世界状态选对话起点"""
+        greetings = npc.get("greetings", {})
+        killed = self._state.get("killed_enemies", [])
+        inventory = self._state.get("player_inventory", [])
+
+        if "after_kill" in greetings and "cave_goblin" in killed:
+            return greetings["after_kill"]
+        if "has_key" in greetings and "rusty_key" in inventory:
+            return greetings["has_key"]
+        return npc.get("greeting", "greet")
+
+    def list_npcs_in_scene(self, scene_id: str) -> list:
+        """🆕 返回场景里所有 NPC 列表（给前端渲染按钮用）"""
+        result = []
+        for npc_data in self._data.get("npcs", {}).values():
+            if npc_data.get("scene_id") == scene_id:
+                result.append({
+                    "id": npc_data["id"],
+                    "name": npc_data["name"],
+                    "avatar": npc_data.get("avatar", "🧑"),
+                })
+        return result
 
     # ---------- 内部工具 ----------
     def _find_first_npc_in_scene(self, scene_id: str) -> Optional[Dict]:

@@ -104,10 +104,19 @@ class ConsoleHandler:
             return f"❌ 读取失败：{str(e)}"
 
     def _cmd_reset(self, args: list) -> str:
+        """完整重置 game_state —— 新开游戏专用"""
         self._state["current_scene"] = "tavern"
         self._item.reset_inventory()
         self._sm.reset()
-        return "🔄 游戏已重置"
+
+        # 🆕 补全所有状态字段（之前漏了导致"新开游戏沿用旧状态"）
+        self._state["current_battle"] = None
+        self._state["current_dialogue"] = None
+        self._state["killed_enemies"] = []      # 敌人全复活！
+        self._state["game_time"] = 0            # 🆕 时间归零
+        self._state["player_hp"] = self._state.get("player_max_hp", 50)
+
+        return "🔄 游戏已完全重置（场景/背包/敌人/战斗全清）"
 
     def _cmd_help(self, args: list) -> str:
         return (

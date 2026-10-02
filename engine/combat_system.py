@@ -26,39 +26,53 @@ class CombatSystem:
         # 初始化战斗状态（和 current_scene/current_dialogue 同级）
         self._state["current_battle"] = None  # {"enemy_id": "...", "enemy_hp": 20}
 
-        # 【订阅 SCENE_ENTER】进场景 → 检查有没有敌人 → 自动开怪
-        self._bus.subscribe("SCENE_ENTER", self._on_scene_enter)
+        # 🆕 不再订阅 SCENE_ENTER 自动开怪！改成玩家主动点按钮触发
 
-    # ---------- 事件回调 ----------
+    # ---------- 事件回调（不再自动开战斗） ----------
     def _on_scene_enter(self, scene_id: str, **kwargs) -> None:
-        """
-        订阅 SCENE_ENTER：进场景 → 如果场景有活着的敌人 → 自动开战斗
-        修复：
-        1. 读档时保留存档里的 enemy_hp，新开战斗才用满血
-        2. 敌人死了就真的死了（在 killed_enemies 里就跳过）
-        """
-        enemies_here = self._get_scene_enemies(scene_id)
-        if enemies_here:
-            enemy = enemies_here[0]
-
-            # 🆕 永久死亡检查：这个敌人已经被玩家打死过？
+        """🆕 进场景不再自动开战斗！只检查：已有 current_battle 但敌人已死 → 清掉"""
+        battle = self._state.get("current_battle")
+        if battle:
             killed = self._state.get("killed_enemies", [])
-            if enemy["id"] in killed:
-                return  # 哥布林死了就不会再复活，什么都不做
+            if battle["enemy_id"] in killed:
+                self.end_battle()
 
-            existing = self._state.get("current_battle")
-            if existing and existing.get("enemy_id") == enemy["id"]:
-                # 存档里已有这个敌人的战斗状态 → 保留（不重置满血！）
-                pass
-            else:
-                # 新开战斗 → 用满血
-                self._state["current_battle"] = {
-                    "enemy_id": enemy["id"],
-                    "enemy_hp": enemy["hp"],
-                }
-                self._bus.publish("BATTLE_START", enemy_id=enemy["id"])
-        else:
-            self.end_battle()
+    # ---------- 🆕 主动触发接口（给前端按钮点时调用） ----------
+    def start_battle(self, enemy_id: str) -> Dict[str, Any]:
+        """玩家点"挑战 XX"按钮 → 手动开始/继续战斗
+        
+        关键：current_battle 永久保留敌人残血，不管玩家在不在这个场景
+        """
+        # 永久死亡检查
+        killed = self._state.get("killed_enemies", [])
+        if enemy_id in killed:
+            return {"success": False, "message": "❌ 这个敌人已经被你打死了"}
+
+        enemy = self._data.get("enemies", {}).get(enemy_id)
+        if not enemy:
+            return {"success": False, "message": "❌ 敌人不存在"}
+
+        # 🆕 残血复用：已有 current_battle 且敌人匹配 → 直接返回（保留残血！）
+        existing = self._state.get("current_battle")
+        if existing and existing.get("enemy_id") == enemy_id:
+            return {"success": True, "message": f"⚔️ 你继续与【{enemy['name']}】战斗！（敌人HP: {existing['enemy_hp']}/{enemy['hp']}）"}
+
+        # 新开战斗 → 满血
+        self._state["current_battle"] = {
+            "enemy_id": enemy_id,
+            "enemy_hp": enemy["hp"],
+        }
+        self._bus.publish("BATTLE_START", enemy_id=enemy_id)
+        return {"success": True, "message": f"⚔️ 你向【{enemy['name']}】发起了攻击！"}
+
+    def list_enemies_in_scene(self, scene_id: str) -> list:
+        """🆕 返回场景里活着的敌人列表（给前端渲染按钮用）"""
+        killed = self._state.get("killed_enemies", [])
+        return [
+            {"id": e["id"], "name": e["name"], "avatar": e.get("avatar", "👾")}
+            for e in self._get_scene_enemies(scene_id)
+            if e["id"] not in killed
+        ]
 
     # ---------- 内部工具 ----------
     def _get_scene_enemies(self, scene_id: str) -> list:
@@ -90,7 +104,11 @@ class CombatSystem:
 
     # ---------- 公开接口（给路由层调用） ----------
     def get_battle_for_api(self) -> Dict[str, Any]:
-        """获取当前战斗的可渲染数据（给前端用）"""
+        """获取当前战斗的可渲染数据（给前端用）
+        
+        🆕 关键改进：只有当玩家在敌人所在场景时才 active=true
+        否则 active=false 但**不清 current_battle**（保留敌人残血！）
+        """
         battle = self._state.get("current_battle")
         player = self._get_player_stats()
         if not battle:
@@ -99,6 +117,12 @@ class CombatSystem:
         enemy = self._get_current_enemy()
         if not enemy:
             self.end_battle()
+            return {"active": False, "player": player}
+
+        # 🆕 检查玩家当前场景有没有这个敌人 —— 没有就返回 inactive（但保留残血）
+        current_scene = self._state.get("current_scene", "")
+        scene_enemy_ids = self._data.get("scenes", {}).get(current_scene, {}).get("enemies_here", [])
+        if battle["enemy_id"] not in scene_enemy_ids:
             return {"active": False, "player": player}
 
         return {
