@@ -4,14 +4,16 @@
    ========================================================================== */
 
 :root {
-    --bg: #1e1e1e;
-    --bg-panel: #252526;
-    --bg-elevated: #2d2d30;
-    --bg-hover: #37373d;
-    --border: #3c3c3c;
-    --border-soft: #333333;
-    --text: #cccccc;
-    --text-dim: #8a8a8a;
+    /* 全部面板色改为半透明，配合 backdrop-filter 做出毛玻璃观感；
+       alpha 保持在 0.8~0.94：既能透出底下的宿主底色，又不会让文字失去对比度 */
+    --bg: rgba(18, 19, 21, 0.94);
+    --bg-panel: rgba(37, 38, 41, 0.82);
+    --bg-elevated: rgba(48, 49, 53, 0.82);
+    --bg-hover: rgba(62, 63, 68, 0.88);
+    --border: rgba(255, 255, 255, 0.10);
+    --border-soft: rgba(255, 255, 255, 0.06);
+    --text: #d0d0d0;
+    --text-dim: #8f8f8f;
     --accent: #4d9fff;
     --accent-hover: #6cb0ff;
     --accent-soft: rgba(77, 159, 255, 0.15);
@@ -21,6 +23,8 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { background: transparent; }
 
 body {
     font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
@@ -32,7 +36,66 @@ body {
     overflow: hidden;
     font-size: 13px;
     line-height: 1.5;
+    /* 禁止玩家选中/复制界面文字（输入框在下方单独放开） */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
+
+/* 表单控件必须保留文字选择能力（用户名、密码、控制台命令） */
+input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+}
+
+/* 可拖动弹窗的标题栏：移动光标 + 触摸拖动不触发页面滚动 */
+.dialogue-header,
+.combat-header,
+.save-panel h3,
+.inventory h3 {
+    cursor: move;
+    touch-action: none;
+}
+/* 标题栏内的关闭按钮保持普通手型，且不承担拖拽 */
+.save-panel h3 button,
+.inventory h3 button {
+    cursor: pointer;
+}
+
+/* ========== 毛玻璃：所有浮在底色之上的面板统一加背景模糊 ========== */
+header,
+#status-bar,
+.scene-card,
+.save-panel,
+.inventory,
+.dialogue-panel,
+.combat-panel,
+.esc-menu-card,
+.offline-start-card,
+.mode-card,
+#auth-overlay .auth-card,
+#dev-console,
+#console-header,
+#console-input-area {
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+/* ========== 滚动条：默认细条 + 透明轨道（无边框方框） ========== */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* ========== 顶栏（薄，34px） ========== */
 header {
@@ -210,7 +273,9 @@ main {
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -260,7 +325,6 @@ main {
 .save-slot-info { color: var(--text); }
 .save-slot-info.slot-empty { color: var(--text-dim); font-style: italic; }
 .save-slot-info .slot-time { color: var(--text-dim); font-size: 0.72rem; margin-left: 0.5rem; }
-.save-slot-info.is-auto::before { content: "🤖 "; font-size: 0.72rem; }
 .save-slot-btns { display: flex; gap: 0.35rem; }
 .save-slot-btns button {
     background: var(--bg-panel);
@@ -306,7 +370,6 @@ main {
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border-soft);
 }
-.dialogue-avatar { font-size: 1.5rem; line-height: 1; }
 .dialogue-name { color: var(--gold); font-weight: 600; font-size: 0.95rem; }
 .dialogue-text {
     color: var(--text);
@@ -367,12 +430,11 @@ main {
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border-soft);
 }
-.enemy-avatar { font-size: 1.7rem; }
 .enemy-info h3 { color: var(--danger); font-size: 0.95rem; margin-bottom: 0.25rem; }
 .hp-bar-container {
     width: 100%;
     height: 14px;
-    background: #1a1a1a;
+    background: rgba(12, 13, 15, 0.6);
     border-radius: 3px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -394,7 +456,7 @@ main {
 .player-hp-row .hp-bar-container { flex: 1; }
 .player-label { font-weight: 600; color: var(--ok); font-size: 0.78rem; white-space: nowrap; }
 .combat-log {
-    background: #171717;
+    background: rgba(14, 15, 17, 0.85);
     border: 1px solid var(--border-soft);
     border-radius: 4px;
     padding: 0.6rem 0.7rem;
@@ -432,7 +494,7 @@ main {
     position: fixed;
     bottom: 0; left: 0; right: 0;
     height: 40vh;
-    background: #141414;
+    background: rgba(12, 13, 15, 0.88);
     border-top: 2px solid var(--accent);
     z-index: 1000;
     flex-direction: column;
@@ -456,7 +518,11 @@ main {
     font-family: 'Consolas', 'Courier New', monospace;
     font-size: 0.78rem;
     line-height: 1.55;
+    /* 完全隐藏滚动条，滚轮/触控板仍可正常滚动 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
+#console-log::-webkit-scrollbar { width: 0; height: 0; display: none; }
 #console-log div { margin-bottom: 0.15rem; }
 #console-log .dev-cmd { color: #9f9; }
 #console-log .engine-output { color: #9cf; }
@@ -470,7 +536,7 @@ main {
 }
 #console-input {
     flex: 1;
-    background: #141414;
+    background: rgba(12, 13, 15, 0.75);
     border: 1px solid var(--border);
     color: var(--text);
     padding: 0.35rem 0.55rem;
@@ -495,7 +561,9 @@ main {
 #mode-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(20, 20, 20, 0.96);
+    background: rgba(10, 11, 13, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -528,7 +596,6 @@ main {
     background: var(--bg-elevated);
     transform: translateY(-2px);
 }
-.mode-card .mode-icon { font-size: 2.2rem; margin-bottom: 0.7rem; }
 .mode-card .mode-title { font-size: 1.05rem; color: var(--text); font-weight: 600; margin-bottom: 0.6rem; }
 .mode-card .mode-desc { font-size: 0.78rem; color: var(--text-dim); line-height: 1.6; }
 .mode-card.online { border-color: var(--border); }
@@ -538,7 +605,9 @@ main {
 #auth-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(20, 20, 20, 0.96);
+    background: rgba(10, 11, 13, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     display: none;
     align-items: center;
     justify-content: center;
@@ -572,7 +641,7 @@ main {
 .auth-form-group label { display: block; color: var(--text-dim); font-size: 0.75rem; margin-bottom: 0.25rem; }
 .auth-form-group input {
     width: 100%;
-    background: #141414;
+    background: rgba(12, 13, 15, 0.75);
     border: 1px solid var(--border);
     color: var(--text);
     padding: 0.4rem 0.55rem;
@@ -623,7 +692,9 @@ main {
 /* ========== 离线启动弹窗 ========== */
 #offline-start-overlay {
     position: fixed; inset: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     display: flex; align-items: center; justify-content: center;
     z-index: 9999;
 }
@@ -653,7 +724,9 @@ main {
 /* ========== ESC 菜单 ========== */
 #esc-menu-overlay {
     position: fixed; inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     display: flex; align-items: center; justify-content: center;
     z-index: 9998;
 }

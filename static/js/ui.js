@@ -107,7 +107,7 @@ async function continueOfflineGame() {
             alert(data.message);
             return;
         }
-    } catch(e) { alert('❌ 网络错误'); return; }
+    } catch(e) { alert('网络错误'); return; }
 
     localStorage.setItem('game_mode', 'offline');
     document.getElementById('offline-start-overlay').classList.add('hidden');
@@ -141,7 +141,7 @@ function enterOnlineGame() {
     authOverlay.classList.remove('active');
     localStorage.setItem('game_mode', 'online');
     if (_currentUser) {
-        onlineUserLabel.textContent = '👤 ' + _currentUser.username;
+        onlineUserLabel.textContent = _currentUser.username;
         onlineUserLabel.style.display = '';
     }
     logoutBtn.style.display = '';
@@ -176,7 +176,7 @@ async function doLogin() {
     const username = document.getElementById('auth-login-username').value.trim();
     const password = document.getElementById('auth-login-password').value;
     if (!username || !password) {
-        setAuthMsg('❌ 请输入用户名和密码', true);
+        setAuthMsg('请输入用户名和密码', true);
         return;
     }
     try {
@@ -194,7 +194,7 @@ async function doLogin() {
             setAuthMsg(data.message, true);
         }
     } catch (e) {
-        setAuthMsg('❌ 网络错误，请稍后再试', true);
+        setAuthMsg('网络错误，请稍后再试', true);
     }
 }
 
@@ -203,11 +203,11 @@ async function doRegister() {
     const password = document.getElementById('auth-reg-password').value;
     const password2 = document.getElementById('auth-reg-password2').value;
     if (!username || !password) {
-        setAuthMsg('❌ 请填写完整信息', true);
+        setAuthMsg('请填写完整信息', true);
         return;
     }
     if (password !== password2) {
-        setAuthMsg('❌ 两次输入的密码不一致', true);
+        setAuthMsg('两次输入的密码不一致', true);
         return;
     }
     try {
@@ -225,7 +225,7 @@ async function doRegister() {
             setAuthMsg(data.message, true);
         }
     } catch (e) {
-        setAuthMsg('❌ 网络错误，请稍后再试', true);
+        setAuthMsg('网络错误，请稍后再试', true);
     }
 }
 
@@ -236,7 +236,7 @@ function backToModeSelect() {
 }
 
 async function doLogout() {
-    if (!confirm('👋 确定退出登录吗？')) return;
+    if (!confirm('确定退出登录吗？')) return;
     await fetch('/api/auth/logout', { method: 'POST' });
     _currentUser = null;
     localStorage.removeItem('game_mode');
@@ -288,7 +288,7 @@ async function doQuickSave() {
     const res = await fetch('/api/save/quick', { method: 'POST' });
     const data = await res.json();
     const msg = document.getElementById('action-message');
-    if (msg) msg.textContent = data.success ? `⚡ 已快速保存` : data.message;
+    if (msg) msg.textContent = data.success ? '已快速保存' : data.message;
     closeEscMenu();
 }
 
@@ -327,6 +327,7 @@ const saveOverlay = document.getElementById('save-overlay');
 
 function openSavePanel() {
     /** 打开存档管理弹窗并刷新列表 */
+    resetModalPosition(saveOverlay.querySelector('.save-panel'));
     saveOverlay.classList.remove('hidden');
     refreshSaveList();
 }
@@ -345,6 +346,7 @@ saveOverlay.addEventListener('click', (e) => {
 const inventoryOverlay = document.getElementById('inventory-overlay');
 
 function openInventory() {
+    resetModalPosition(document.getElementById('inventory-card'));
     inventoryOverlay.classList.remove('hidden');
 }
 function closeInventory() {
@@ -370,7 +372,7 @@ async function refreshSaveList() {
         const info = document.createElement('div');
         info.style.color = '#4ade80';
         info.style.padding = '1rem';
-        info.innerHTML = `🌐 在线模式自动存档<br><span style="color:#94a3b8;font-size:0.8rem;">服务器实时保存，无需手动操作</span>`;
+        info.innerHTML = `在线模式自动存档<br><span style="color:#94a3b8;font-size:0.8rem;">服务器实时保存，无需手动操作</span>`;
         if (data.online_auto_updated_at) {
             info.innerHTML += `<br><span style="color:#64748b;font-size:0.75rem;">上次更新：${data.online_auto_updated_at}</span>`;
         }
@@ -379,10 +381,10 @@ async function refreshSaveList() {
     }
 
     // 离线模式：三路分区
-    // 1. 🤖 自动存档（系统维护，只有读档）
+    // 1. 自动存档（系统维护，只有读档）
     const autoHeader = document.createElement('div');
     autoHeader.className = 'save-section-title';
-    autoHeader.innerHTML = '🤖 自动存档 <span style="color:#64748b;font-size:0.75rem;">（系统每30秒保存，覆盖自己）</span>';
+    autoHeader.innerHTML = '自动存档 <span style="color:#64748b;font-size:0.75rem;">（系统每30秒保存，覆盖自己）</span>';
     slotsDiv.appendChild(autoHeader);
 
     if (data.auto_has_data) {
@@ -395,10 +397,10 @@ async function refreshSaveList() {
         slotsDiv.appendChild(buildSlotRow('auto', null));
     }
 
-    // 2. ⚡ 快速保存
+    // 2. 快速保存
     const quickHeader = document.createElement('div');
     quickHeader.className = 'save-section-title';
-    quickHeader.innerHTML = '⚡ 快速保存 <span style="color:#64748b;font-size:0.75rem;">（F5 快捷键，覆盖自己）</span>';
+    quickHeader.innerHTML = '快速保存 <span style="color:#64748b;font-size:0.75rem;">（F5 快捷键，覆盖自己）</span>';
     slotsDiv.appendChild(quickHeader);
 
     if (data.quick_has_data) {
@@ -411,10 +413,10 @@ async function refreshSaveList() {
         slotsDiv.appendChild(buildSlotRow('quick', null));
     }
 
-    // 3. 📦 手动槽位 slot_1~5
+    // 3. 手动槽位 slot_1~5
     const slotHeader = document.createElement('div');
     slotHeader.className = 'save-section-title';
-    slotHeader.innerHTML = '📦 手动槽位 <span style="color:#64748b;font-size:0.75rem;">（可新开或覆盖已有槽位）</span>';
+    slotHeader.innerHTML = '手动槽位 <span style="color:#64748b;font-size:0.75rem;">（可新开或覆盖已有槽位）</span>';
     slotsDiv.appendChild(slotHeader);
 
     for (const slot of data.slots) {
@@ -430,14 +432,14 @@ function buildSlotRow(slotName, info) {
     row.style.borderLeft = hasData ? '3px solid #4ade80' : '3px solid #64748b';
 
     // 槽位名 + 时间
-    const label = slotName === 'auto' ? '🤖 自动存档' :
-                  slotName === 'quick' ? '⚡ 快速保存' :
-                  `📦 槽位 ${slotName.replace('slot_', '')}`;
+    const label = slotName === 'auto' ? '自动存档' :
+                  slotName === 'quick' ? '快速保存' :
+                  `槽位 ${slotName.replace('slot_', '')}`;
 
     const infoDiv = document.createElement('div');
-    infoDiv.className = 'save-slot-info' + (info && (info.is_auto || info.is_quick) ? ' is-auto' : '');
+    infoDiv.className = 'save-slot-info';
     if (hasData) {
-        infoDiv.innerHTML = `<strong>${label}</strong><span class="slot-time">⏱ ${info.updated_at}</span>`;
+        infoDiv.innerHTML = `<strong>${label}</strong><span class="slot-time">${info.updated_at}</span>`;
     } else {
         infoDiv.innerHTML = `<strong>${label}</strong> — 空`;
     }
@@ -452,7 +454,7 @@ function buildSlotRow(slotName, info) {
     // 手动存
     if (canManualSave) {
         const saveBtn = document.createElement('button');
-        saveBtn.textContent = '💾 存';
+        saveBtn.textContent = '存';
         saveBtn.title = slotName === 'quick' ? '覆盖快速保存' : (hasData ? '覆盖此槽位' : '新开存档');
         saveBtn.onclick = () => manualSave(slotName);
         btns.appendChild(saveBtn);
@@ -461,7 +463,7 @@ function buildSlotRow(slotName, info) {
     // 载入
     const loadBtn = document.createElement('button');
     loadBtn.className = 'btn-load';
-    loadBtn.textContent = '📂 载入';
+    loadBtn.textContent = '载入';
     loadBtn.disabled = !hasData;
     loadBtn.onclick = () => loadSave(slotName);
     btns.appendChild(loadBtn);
@@ -470,7 +472,7 @@ function buildSlotRow(slotName, info) {
     if (!isSystemSlot) {
         const delBtn = document.createElement('button');
         delBtn.className = 'btn-delete';
-        delBtn.textContent = '🗑️';
+        delBtn.textContent = '删除';
         delBtn.disabled = !hasData;
         delBtn.onclick = () => deleteSave(slotName);
         btns.appendChild(delBtn);
@@ -499,27 +501,26 @@ async function manualSave(slotName) {
         data = await res.json();
     }
     showActionMsg(
-        data.success ? `💾 已保存到 ${slotName}${data.updated_at ? '（' + data.updated_at + '）' : ''}` : data.message);
+        data.success ? `已保存到 ${slotName}${data.updated_at ? '（' + data.updated_at + '）' : ''}` : data.message);
     if (data.success) refreshSaveList();
 }
 
 async function loadSave(slotName) {
     /** 从指定槽位读档 */
-    if (!confirm(`📂 确认读取 ${slotName}？当前进度会被覆盖。`)) return;
+    if (!confirm(`确认读取 ${slotName}？当前进度会被覆盖。`)) return;
     const res = await fetch('/api/load', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slot_name: slotName })
     });
     const data = await res.json();
-    showActionMsg(
-        data.success ? `📂 ${data.message}` : data.message);
+    showActionMsg(data.message);
     if (data.success) fetchState();  // 刷新场景/背包/对话/战斗面板
 }
 
 async function deleteSave(slotName) {
     /** 删除一个槽位 */
-    if (!confirm(`🗑️ 确认删除 ${slotName} 的存档？此操作不可撤销。`)) return;
+    if (!confirm(`确认删除 ${slotName} 的存档？此操作不可撤销。`)) return;
     const res = await fetch('/api/save', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },

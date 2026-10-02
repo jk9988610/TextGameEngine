@@ -57,12 +57,12 @@ class SceneManager:
 
         # 检查出口是否存在
         if target_scene_id not in self._data["scenes"][current_scene_id]["exits"]:
-            response["message"] = "❌ 这个出口不存在"
+            response["message"] = "这个出口不存在"
             return response
 
         # 检查出口是否锁定
         if self._state["scene_lock_states"][current_scene_id].get(target_scene_id, False):
-            response["message"] = "🔒 这个出口被锁住了，你需要找到钥匙"
+            response["message"] = "这个出口被锁住了，你需要找到钥匙"
             return response
 
         # 执行移动 + 发布事件（订阅者会响应，比如 NPC 触发对话）
@@ -72,17 +72,17 @@ class SceneManager:
         self._bus.publish("SCENE_ENTER", scene_id=target_scene_id)
 
         response["success"] = True
-        response["message"] = f"🚶 你走进了【{target_name}】"
+        response["message"] = f"你走进了【{target_name}】"
         return response
 
     def teleport(self, target_scene_id: str) -> Dict[str, Any]:
         """控制台命令：传送（跳过出口/锁定检查）"""
         if not self.scene_exists(target_scene_id):
-            return {"success": False, "message": f"❌ 场景不存在：{target_scene_id}"}
+            return {"success": False, "message": f"场景不存在：{target_scene_id}"}
         self._state["current_scene"] = target_scene_id
         self._bus.publish("SCENE_ENTER", scene_id=target_scene_id)
         target_name = self._data["scenes"][target_scene_id]["name"]
-        return {"success": True, "message": f"🚀 传送到【{target_name}】"}
+        return {"success": True, "message": f"传送到【{target_name}】"}
 
     def reset(self) -> None:
         """重置所有场景状态"""

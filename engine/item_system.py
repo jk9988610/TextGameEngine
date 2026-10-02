@@ -41,7 +41,7 @@ class ItemSystem:
         response = {"success": False, "message": ""}
 
         if item_id not in self._state["scene_item_states"][scene_id]:
-            response["message"] = "❌ 这里没有这个物品"
+            response["message"] = "这里没有这个物品"
             return response
 
         # 执行拿取 + 发布事件（订阅者会响应，比如钥匙解锁门）
@@ -50,7 +50,7 @@ class ItemSystem:
         self._bus.publish("ITEM_TAKEN", item_id=item_id, from_scene=scene_id)
 
         response["success"] = True
-        response["message"] = f"✅ 你拿到了【{self.get_item_name(item_id)}】"
+        response["message"] = f"你拿到了【{self.get_item_name(item_id)}】"
         return response
 
     def drop_item(self, item_id: str) -> Dict[str, Any]:
@@ -59,7 +59,7 @@ class ItemSystem:
         response = {"success": False, "message": ""}
 
         if item_id not in self._state["player_inventory"]:
-            response["message"] = "❌ 你没有这个物品"
+            response["message"] = "你没有这个物品"
             return response
 
         self._state["player_inventory"].remove(item_id)
@@ -67,34 +67,34 @@ class ItemSystem:
         self._bus.publish("ITEM_DROPPED", item_id=item_id, to_scene=scene_id)
 
         response["success"] = True
-        response["message"] = f"🗑️ 你把【{self.get_item_name(item_id)}】丢在了地上"
+        response["message"] = f"你把【{self.get_item_name(item_id)}】丢在了地上"
         return response
 
     def use_item(self, item_id: str, target_id: str = None) -> Dict[str, Any]:
         """使用物品（预留给对话/战斗系统，现在只发布事件）"""
         response = {"success": False, "message": ""}
         if item_id not in self._state["player_inventory"]:
-            response["message"] = "❌ 你没有这个物品"
+            response["message"] = "你没有这个物品"
             return response
         self._bus.publish("ITEM_USED", item_id=item_id, target_id=target_id)
         response["success"] = True
-        response["message"] = f"🔧 你使用了【{self.get_item_name(item_id)}】"
+        response["message"] = f"你使用了【{self.get_item_name(item_id)}】"
         return response
 
     def add_to_inventory(self, item_id: str) -> Dict[str, Any]:
         """控制台命令：直接加物品到背包"""
         response = {"success": False, "message": ""}
         if not self.item_exists(item_id):
-            response["message"] = f"❌ 物品不存在：{item_id}"
+            response["message"] = f"物品不存在：{item_id}"
             return response
         if item_id in self._state["player_inventory"]:
-            response["message"] = "❌ 你已经有这个物品了"
+            response["message"] = "你已经有这个物品了"
             return response
 
         self._state["player_inventory"].append(item_id)
         self._bus.publish("ITEM_TAKEN", item_id=item_id, from_scene="__console__")
         response["success"] = True
-        response["message"] = f"📦 已添加【{self.get_item_name(item_id)}】到背包"
+        response["message"] = f"已添加【{self.get_item_name(item_id)}】到背包"
         return response
 
     def reset_inventory(self) -> None:

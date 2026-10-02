@@ -2,7 +2,6 @@
   "cave_goblin": {
     "id": "cave_goblin",
     "name": "洞穴哥布林",
-    "avatar": "👺",
     "hp": 30,
     "attack": 5,
     "defense": 2,

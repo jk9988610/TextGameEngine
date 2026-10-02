@@ -3,7 +3,6 @@
     "id": "npc_1_drunk",
     "name": "醉汉巴尼",
     "scene_id": "tavern",
-    "avatar": "🍺",
     "greeting": "greet",
     "greetings": {
       "after_kill": "hero_welcome"
@@ -65,7 +64,6 @@
     "id": "npc_2_sprite",
     "name": "森林精灵莉娅",
     "scene_id": "forest",
-    "avatar": "🧚",
     "greeting": "greet",
     "greetings": {
       "has_key": "has_key",

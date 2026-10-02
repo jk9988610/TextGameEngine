@@ -52,11 +52,11 @@ class AuthManager:
         username = username.strip()
         # 基本校验
         if not username or len(username) < 2:
-            return False, "❌ 用户名至少 2 个字符", None
+            return False, "用户名至少 2 个字符", None
         if not password or len(password) < 4:
-            return False, "❌ 密码至少 4 个字符", None
+            return False, "密码至少 4 个字符", None
         if len(username) > 32:
-            return False, "❌ 用户名太长（最多 32 个字符）", None
+            return False, "用户名太长（最多 32 个字符）", None
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         pw_hash = generate_password_hash(password)
@@ -67,7 +67,7 @@ class AuthManager:
                 "SELECT id FROM users WHERE username=?", (username,)
             ).fetchone()
             if existing:
-                return False, f"❌ 用户名「{username}」已被占用", None
+                return False, f"用户名「{username}」已被占用", None
 
             cursor = conn.execute(
                 "INSERT INTO users (username, password_hash, created_at, last_login_at) "
@@ -77,7 +77,7 @@ class AuthManager:
             conn.commit()
             user_id = cursor.lastrowid
 
-        return True, f"✅ 注册成功，欢迎「{username}」！", user_id
+        return True, f"注册成功，欢迎「{username}」！", user_id
 
     def login(self, username: str, password: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
@@ -86,16 +86,16 @@ class AuthManager:
         """
         username = username.strip()
         if not username or not password:
-            return False, "❌ 请输入用户名和密码", None
+            return False, "请输入用户名和密码", None
 
         with self._lock, self._get_conn() as conn:
             row = conn.execute(
                 "SELECT id, username, password_hash FROM users WHERE username=?", (username,)
             ).fetchone()
             if not row:
-                return False, f"❌ 用户「{username}」不存在", None
+                return False, f"用户「{username}」不存在", None
             if not check_password_hash(row["password_hash"], password):
-                return False, "❌ 密码错误", None
+                return False, "密码错误", None
 
             # 更新最后登录时间
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -105,7 +105,7 @@ class AuthManager:
             conn.commit()
 
             user_info = {"user_id": row["id"], "username": row["username"]}
-        return True, f"✅ 欢迎回来，「{row['username']}」！", user_info
+        return True, f"欢迎回来，「{row['username']}」！", user_info
 
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         """根据 user_id 查用户（用于 /api/auth/me 接口）"""

@@ -38,7 +38,7 @@ class ConsoleHandler:
         """
         parts = raw_command.strip().split()
         if not parts:
-            return "❌ 空命令"
+            return "错误：空命令"
 
         cmd_name = parts[0].lower()
         cmd_args = parts[1:]
@@ -58,24 +58,24 @@ class ConsoleHandler:
         if handler:
             return handler(cmd_args)
         else:
-            return f"❓ 未知命令：{cmd_name}\n可用命令：{list(handlers.keys())}"
+            return f"错误：未知命令：{cmd_name}\n可用命令：{list(handlers.keys())}"
 
     # ---------- 具体命令实现（每个只做一件事） ----------
     def _cmd_teleport(self, args: list) -> str:
         if not args:
-            return "❌ 用法：teleport <场景ID>（可用：tavern/forest/cave）"
+            return "错误：用法：teleport <场景ID>（可用：tavern/forest/cave）"
         result = self._sm.teleport(args[0])
         return result["message"]
 
     def _cmd_add_item(self, args: list) -> str:
         if not args or not self._item.item_exists(args[0]):
-            return f"❌ 用法：add_item <物品ID>（可用：{list(self._data['items'].keys())}）"
+            return f"错误：用法：add_item <物品ID>（可用：{list(self._data['items'].keys())}）"
         result = self._item.add_to_inventory(args[0])
         return result["message"]
 
     def _cmd_drop_item(self, args: list) -> str:
         if not args:
-            return "❌ 用法：drop_item <物品ID>"
+            return "错误：用法：drop_item <物品ID>"
         result = self._item.drop_item(args[0])
         return result["message"]
 
@@ -89,7 +89,7 @@ class ConsoleHandler:
         os.makedirs(os.path.dirname(self._save_path), exist_ok=True)
         with open(self._save_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
-        return f"💾 快照已保存到 {self._save_path}"
+        return f"快照已保存到 {self._save_path}"
 
     def _cmd_load(self, args: list) -> str:
         try:
@@ -97,11 +97,11 @@ class ConsoleHandler:
                 snapshot = json.load(f)
             self._state.update(snapshot)
             scene_name = self._data["scenes"][self._state["current_scene"]]["name"]
-            return f"📂 已读取快照，回到【{scene_name}】"
+            return f"已读取快照，回到【{scene_name}】"
         except FileNotFoundError:
-            return "❌ 没有找到存档快照"
+            return "错误：没有找到存档快照"
         except Exception as e:
-            return f"❌ 读取失败：{str(e)}"
+            return f"错误：读取失败：{str(e)}"
 
     def _cmd_reset(self, args: list) -> str:
         """完整重置 game_state —— 新开游戏专用"""
@@ -116,11 +116,11 @@ class ConsoleHandler:
         self._state["game_time"] = 0            # 🆕 时间归零
         self._state["player_hp"] = self._state.get("player_max_hp", 50)
 
-        return "🔄 游戏已完全重置（场景/背包/敌人/战斗全清）"
+        return "游戏已完全重置（场景/背包/敌人/战斗全清）"
 
     def _cmd_help(self, args: list) -> str:
         return (
-            "📋 可用命令：\n"
+            "可用命令：\n"
             "  teleport <场景ID>  传送（跳过出口检查）\n"
             "  add_item <物品ID>  加物品到背包\n"
             "  drop_item <物品ID> 丢物品到当前场景\n"

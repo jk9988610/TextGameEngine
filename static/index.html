@@ -7,13 +7,12 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- 🆕 模式选择覆盖层（首次进入显示，选完隐藏） -->
+    <!-- 模式选择覆盖层（首次进入显示，选完隐藏） -->
     <div id="mode-overlay">
-        <h2>⚔️ 文字游戏引擎</h2>
+        <h2>文字游戏引擎</h2>
         <p class="mode-subtitle">选择你的游玩方式</p>
         <div class="mode-buttons">
             <div class="mode-card" onclick="chooseMode('offline')">
-                <div class="mode-icon">💻</div>
                 <div class="mode-title">离线模式</div>
                 <div class="mode-desc">
                     单机畅玩，无需登录<br>
@@ -23,7 +22,6 @@
                 </div>
             </div>
             <div class="mode-card online" onclick="chooseMode('online')">
-                <div class="mode-icon">🌐</div>
                 <div class="mode-title">在线模式</div>
                 <div class="mode-desc">
                     多人同场，需账号登录<br>
@@ -35,10 +33,10 @@
         </div>
     </div>
 
-    <!-- 🆕 登录/注册覆盖层（选在线模式后弹出，登录成功自动进入游戏） -->
+    <!-- 登录/注册覆盖层（选在线模式后弹出，登录成功自动进入游戏） -->
     <div id="auth-overlay">
         <div class="auth-card">
-            <h2>🌐 在线模式登录</h2>
+            <h2>在线模式登录</h2>
             <div class="auth-tabs">
                 <button class="auth-tab active" onclick="switchAuthTab('login')">登录</button>
                 <button class="auth-tab" onclick="switchAuthTab('register')">注册</button>
@@ -76,24 +74,21 @@
         </div>
     </div>
 
-    <!-- 🆕 离线模式启动弹窗：新游戏 / 继续 / 载入 -->
+    <!-- 离线模式启动弹窗：新游戏 / 继续 / 载入 -->
     <div id="offline-start-overlay" class="hidden">
         <div class="offline-start-card">
-            <h2>💻 离线模式</h2>
+            <h2>离线模式</h2>
             <p class="mode-subtitle">你想怎么开始？</p>
             <div class="offline-options">
                 <div class="offline-opt-card" onclick="newOfflineGame()">
-                    <div class="mode-icon">🎮</div>
                     <div class="mode-title">新游戏</div>
                     <div class="mode-desc">从酒馆重新开始<br>当前进度将丢失</div>
                 </div>
                 <div class="offline-opt-card" id="continue-card" onclick="continueOfflineGame()">
-                    <div class="mode-icon">▶️</div>
                     <div class="mode-title">继续游戏</div>
                     <div class="mode-desc" id="continue-desc">加载最新自动存档</div>
                 </div>
                 <div class="offline-opt-card" id="load-card" onclick="openLoadPanel()">
-                    <div class="mode-icon">📂</div>
                     <div class="mode-title">载入游戏</div>
                     <div class="mode-desc">选择存档槽位载入</div>
                 </div>
@@ -102,43 +97,43 @@
         </div>
     </div>
 
-    <!-- 🆕 ESC 菜单覆盖层 -->
+    <!-- ESC 菜单覆盖层 -->
     <div id="esc-menu-overlay" class="hidden">
         <div class="esc-menu-card">
-            <h2>⚙️ 游戏菜单</h2>
+            <h2>游戏菜单</h2>
             <div class="esc-menu-items">
                 <div class="esc-menu-item" id="esc-quick-save" onclick="doQuickSave()">
-                    <span>⚡</span><span>快速保存（F5）</span>
+                    <span>快速保存（F5）</span>
                 </div>
                 <div class="esc-menu-item" id="esc-save-mgmt" onclick="openSavePanelFromMenu()">
-                    <span>📂</span><span>存档管理</span>
+                    <span>存档管理</span>
                 </div>
                 <div class="esc-menu-item danger" onclick="returnToModeSelect()">
-                    <span>🚪</span><span>返回模式选择</span>
+                    <span>返回模式选择</span>
                 </div>
                 <div class="esc-menu-item" onclick="closeEscMenu()">
-                    <span>✕</span><span>关闭菜单</span>
+                    <span>关闭菜单</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 🆕 存档管理弹窗（点击 💾 存档 / ESC 菜单 → 存档管理 打开） -->
+    <!-- 存档管理弹窗（点击 存档 / ESC 菜单 → 存档管理 打开） -->
     <div id="save-overlay" class="modal-overlay hidden">
         <div class="save-panel" id="save-panel">
             <h3>
-                📂 存档管理
+                存档管理
                 <button id="close-save-btn" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;">✕</button>
             </h3>
             <div id="save-slots"></div>
         </div>
     </div>
 
-    <!-- 🆕 背包弹窗（点击顶部 🎒 背包 按钮打开） -->
+    <!-- 背包弹窗（点击底栏 背包 按钮打开） -->
     <div id="inventory-overlay" class="modal-overlay hidden">
         <div class="inventory" id="inventory-card">
             <h3>
-                🎒 玩家背包
+                玩家背包
                 <button id="close-inventory-btn" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;">✕</button>
             </h3>
             <div class="items" id="player-inventory">
@@ -149,7 +144,7 @@
 
     <!-- 顶部标题栏（薄） -->
     <header>
-        <h1>⚔️ 文字游戏引擎</h1>
+        <h1>文字游戏引擎</h1>
         <div class="header-hints">
             <span><kbd>~</kbd> 控制台</span>
             <span><kbd>ESC</kbd> 菜单</span>
@@ -167,7 +162,7 @@
 
             <!-- 可拿取的物品 -->
             <div class="interact-section">
-                <h3>🎒 可拿取的物品</h3>
+                <h3>可拿取的物品</h3>
                 <div class="button-list" id="items-list">
                     <span style="color:#64748b;">（这里没有物品）</span>
                 </div>
@@ -175,32 +170,31 @@
 
             <!-- 可走的出口 -->
             <div class="interact-section">
-                <h3>🚪 可前往的出口</h3>
+                <h3>可前往的出口</h3>
                 <div class="button-list" id="exits-list">
                     <span style="color:#64748b;">（这里没有出口）</span>
                 </div>
             </div>
 
-            <!-- 🆕 场景里的 NPC（主动触发对话） -->
+            <!-- 场景里的 NPC（主动触发对话） -->
             <div class="interact-section" id="npc-section" style="display:none;">
-                <h3>💬 可对话的 NPC</h3>
+                <h3>可对话的 NPC</h3>
                 <div class="button-list" id="npc-list"></div>
             </div>
 
-            <!-- 🆕 场景里的敌人（主动触发战斗） -->
+            <!-- 场景里的敌人（主动触发战斗） -->
             <div class="interact-section" id="enemy-section" style="display:none;">
-                <h3>⚔️ 可挑战的敌人</h3>
+                <h3>可挑战的敌人</h3>
                 <div class="button-list" id="enemy-list"></div>
             </div>
 
             <!-- 操作消息提示 -->
-            <div class="message" id="action-message">欢迎来到文字游戏引擎！点击上面的按钮开始探索吧～</div>
+            <div class="message" id="action-message">欢迎来到文字游戏引擎！点击上面的按钮开始探索吧。</div>
         </div>
 
-        <!-- 🆕 NPC 对话面板（默认隐藏，有对话才显示） -->
+        <!-- NPC 对话面板（默认隐藏，有对话才显示） -->
         <div class="dialogue-panel" id="dialogue-panel">
             <div class="dialogue-header">
-                <span class="dialogue-avatar" id="dialogue-avatar">🧑</span>
                 <span class="dialogue-name" id="dialogue-name">NPC</span>
             </div>
             <div class="dialogue-text" id="dialogue-text">对话内容加载中...</div>
@@ -208,10 +202,9 @@
             <button class="dialogue-close-btn" id="dialogue-close">（跳过对话）</button>
         </div>
 
-        <!-- 🆕 战斗面板（默认隐藏，有敌人场景自动弹出） -->
+        <!-- 战斗面板（默认隐藏，玩家点"挑战"后弹出） -->
         <div class="combat-panel" id="combat-panel">
             <div class="combat-header">
-                <span class="enemy-avatar" id="enemy-avatar">👾</span>
                 <div class="enemy-info">
                     <h3 id="enemy-name">敌人</h3>
                     <div class="hp-bar-container">
@@ -222,11 +215,11 @@
             </div>
             <!-- 战斗日志 -->
             <div class="combat-log" id="combat-log">
-                <span class="log-system">⚔️ 战斗开始！</span>
+                <span class="log-system">战斗开始！</span>
             </div>
             <!-- 玩家HP -->
             <div class="player-hp-row">
-                <span class="player-label">🧑 你</span>
+                <span class="player-label">你</span>
                 <div class="hp-bar-container">
                     <div class="hp-bar-fill" id="player-hp-bar" style="width:100%; background:linear-gradient(90deg,#4ade80,#22c55e);"></div>
                 </div>
@@ -234,7 +227,7 @@
             </div>
             <!-- 战斗按钮 -->
             <div class="combat-actions">
-                <button class="combat-btn" id="attack-btn">⚔️ 攻击！</button>
+                <button class="combat-btn" id="attack-btn">攻击！</button>
             </div>
         </div>
 
@@ -243,28 +236,28 @@
     <!-- 底部状态栏：左侧状态记录，右侧功能按钮 -->
     <footer id="status-bar">
         <div class="status-left">
-            <span id="status-scene">📍 —</span>
+            <span id="status-scene">—</span>
             <span id="status-time"></span>
         </div>
         <div class="status-right">
-            <button id="toggle-inventory-btn" class="status-btn">🎒 背包</button>
-            <button id="toggle-save-btn" class="status-btn" style="display:none;">💾 存档</button>
-            <button id="btn-console" class="status-btn">⌨️ 控制台</button>
-            <button id="btn-menu" class="status-btn">⚙️ 菜单</button>
-            <button id="logout-btn" class="status-btn" style="display:none;">🚪 退出</button>
+            <button id="toggle-inventory-btn" class="status-btn">背包</button>
+            <button id="toggle-save-btn" class="status-btn" style="display:none;">存档</button>
+            <button id="btn-console" class="status-btn">控制台</button>
+            <button id="btn-menu" class="status-btn">菜单</button>
+            <button id="logout-btn" class="status-btn" style="display:none;">退出</button>
         </div>
     </footer>
 
     <!-- ========== 开发者控制台（默认隐藏） ========== -->
     <div id="dev-console">
         <div id="console-header">
-            <h3>⌨️  开发者控制台</h3>
+            <h3>开发者控制台</h3>
             <button id="close-console" title="关闭控制台">✕</button>
         </div>
         <div id="console-log">
             <div class="engine-output">欢迎来到开发者控制台！可用命令：</div>
-            <div class="engine-output">  • teleport <场景ID>  传送到指定场景（tavern/forest/cave）</div>
-            <div class="engine-output">  • add_item <物品ID>  给背包添加物品（rusty_key/torch/gold_coin）</div>
+            <div class="engine-output">  • teleport &lt;场景ID&gt;  传送到指定场景（tavern/forest/cave）</div>
+            <div class="engine-output">  • add_item &lt;物品ID&gt;  给背包添加物品（rusty_key/torch/gold_coin）</div>
             <div class="engine-output">  • save              保存快照到 game_data/snapshot.json</div>
             <div class="engine-output">  • load              读取快照</div>
             <div class="engine-output">  • reset             重置游戏</div>

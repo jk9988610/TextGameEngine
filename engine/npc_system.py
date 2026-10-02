@@ -43,11 +43,11 @@ class NPCSystem:
         """玩家点"和 XX 说话"按钮 → 手动启动对话"""
         npc = self._get_npc(npc_id)
         if not npc:
-            return {"success": False, "message": "❌ NPC 不存在"}
+            return {"success": False, "message": "NPC 不存在"}
         node_id = self._pick_greeting(npc)
         self._state["current_dialogue"] = {"npc_id": npc_id, "node_id": node_id}
         self._bus.publish("NPC_TALK", npc_id=npc_id, node_id=node_id)
-        return {"success": True, "message": "✅ 对话已开始"}
+        return {"success": True, "message": "对话已开始"}
 
     def _pick_greeting(self, npc: Dict) -> str:
         """根据 game_state 世界状态选对话起点"""
@@ -69,7 +69,6 @@ class NPCSystem:
                 result.append({
                     "id": npc_data["id"],
                     "name": npc_data["name"],
-                    "avatar": npc_data.get("avatar", "🧑"),
                 })
         return result
 
@@ -120,7 +119,6 @@ class NPCSystem:
             "active": True,
             "npc_id": npc["id"],
             "npc_name": npc["name"],
-            "npc_avatar": npc.get("avatar", "🧑"),
             "node_id": dialogue["node_id"],
             "text": node["text"],
             "choices": filtered_choices,
@@ -131,12 +129,12 @@ class NPCSystem:
         response = {"success": False, "message": ""}
         dialogue = self._state.get("current_dialogue")
         if not dialogue:
-            response["message"] = "❌ 当前没有对话"
+            response["message"] = "当前没有对话"
             return response
 
         node = self._get_node(dialogue["npc_id"], dialogue["node_id"])
         if not node:
-            response["message"] = "❌ 对话节点不存在"
+            response["message"] = "对话节点不存在"
             return response
 
         player_inv = self._state.get("player_inventory", [])
@@ -144,7 +142,7 @@ class NPCSystem:
                          if not c.get("requires_item") or c["requires_item"] in player_inv]
 
         if choice_index < 0 or choice_index >= len(valid_choices):
-            response["message"] = "❌ 选项索引无效"
+            response["message"] = "选项索引无效"
             return response
 
         chosen = valid_choices[choice_index]
@@ -155,12 +153,12 @@ class NPCSystem:
             self._state["current_dialogue"]["node_id"] = next_node_id
             self._bus.publish("NPC_TALK", npc_id=dialogue["npc_id"], node_id=next_node_id)
             response["success"] = True
-            response["message"] = "✅ 对话推进成功"
+            response["message"] = "对话推进成功"
         else:
             # 没有 next → 对话结束
             self.end_dialogue()
             response["success"] = True
-            response["message"] = "✅ 对话已结束"
+            response["message"] = "对话已结束"
 
         return response
 

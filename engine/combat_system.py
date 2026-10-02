@@ -46,16 +46,16 @@ class CombatSystem:
         # 永久死亡检查
         killed = self._state.get("killed_enemies", [])
         if enemy_id in killed:
-            return {"success": False, "message": "❌ 这个敌人已经被你打死了"}
+            return {"success": False, "message": "这个敌人已经被你打死了"}
 
         enemy = self._data.get("enemies", {}).get(enemy_id)
         if not enemy:
-            return {"success": False, "message": "❌ 敌人不存在"}
+            return {"success": False, "message": "敌人不存在"}
 
         # 🆕 残血复用：已有 current_battle 且敌人匹配 → 直接返回（保留残血！）
         existing = self._state.get("current_battle")
         if existing and existing.get("enemy_id") == enemy_id:
-            return {"success": True, "message": f"⚔️ 你继续与【{enemy['name']}】战斗！（敌人HP: {existing['enemy_hp']}/{enemy['hp']}）"}
+            return {"success": True, "message": f"你继续与【{enemy['name']}】战斗！（敌人HP: {existing['enemy_hp']}/{enemy['hp']}）"}
 
         # 新开战斗 → 满血
         self._state["current_battle"] = {
@@ -63,13 +63,13 @@ class CombatSystem:
             "enemy_hp": enemy["hp"],
         }
         self._bus.publish("BATTLE_START", enemy_id=enemy_id)
-        return {"success": True, "message": f"⚔️ 你向【{enemy['name']}】发起了攻击！"}
+        return {"success": True, "message": f"你向【{enemy['name']}】发起了攻击！"}
 
     def list_enemies_in_scene(self, scene_id: str) -> list:
         """🆕 返回场景里活着的敌人列表（给前端渲染按钮用）"""
         killed = self._state.get("killed_enemies", [])
         return [
-            {"id": e["id"], "name": e["name"], "avatar": e.get("avatar", "👾")}
+            {"id": e["id"], "name": e["name"]}
             for e in self._get_scene_enemies(scene_id)
             if e["id"] not in killed
         ]
@@ -130,7 +130,6 @@ class CombatSystem:
             "enemy": {
                 "id": enemy["id"],
                 "name": enemy["name"],
-                "avatar": enemy.get("avatar", "👾"),
                 "hp": battle["enemy_hp"],
                 "max_hp": enemy["hp"],
                 "attack": enemy["attack"],
@@ -145,35 +144,35 @@ class CombatSystem:
         response = {"success": False, "message": "", "log": []}
         battle = self._state.get("current_battle")
         if not battle:
-            response["message"] = "❌ 当前没有战斗"
+            response["message"] = "当前没有战斗"
             return response
 
         enemy = self._get_current_enemy()
         if not enemy:
             self.end_battle()
-            response["message"] = "❌ 敌人不见了"
+            response["message"] = "敌人不见了"
             return response
 
         player = self._get_player_stats()
         # 检查武器：必须在玩家背包里，且 is_weapon=true
         weapon = self._data.get("items", {}).get(weapon_id, {})
         if weapon_id not in self._state.get("player_inventory", []):
-            response["message"] = f"❌ 你没有【{weapon.get('name', weapon_id)}】"
+            response["message"] = f"你没有【{weapon.get('name', weapon_id)}】"
             return response
         if not weapon.get("is_weapon"):
-            response["message"] = f"❌ 【{weapon.get('name', weapon_id)}】不是武器"
+            response["message"] = f"【{weapon.get('name', weapon_id)}】不是武器"
             return response
 
         # --- 玩家攻击 ---
         weapon_dmg = weapon.get("damage", 5)
         p_damage = self._damage(weapon_dmg, enemy["defense"])
         battle["enemy_hp"] -= p_damage
-        response["log"].append(f"⚔️ 你用【{weapon['name']}】对【{enemy['name']}】造成 **{p_damage}** 点伤害！")
+        response["log"].append(f"你用【{weapon['name']}】对【{enemy['name']}】造成 **{p_damage}** 点伤害！")
         self._bus.publish("COMBAT_DAMAGE", attacker="player", defender=enemy["id"], damage=p_damage)
 
         # 敌人死了？
         if battle["enemy_hp"] <= 0:
-            response["log"].append(f"💀 【{enemy['name']}】被你打倒了！")
+            response["log"].append(f"【{enemy['name']}】被你打倒了！")
             self._bus.publish("COMBAT_DEATH", dead=enemy["id"])
             # 🆕 关键：标记永久死亡 → 以后再进洞穴不会复活了
             self._state.setdefault("killed_enemies", [])
@@ -184,10 +183,10 @@ class CombatSystem:
             for item_id in enemy.get("reward_items", []):
                 self._state.setdefault("scene_item_states", {}).setdefault(current_scene, []).append(item_id)
                 item_name = self._data["items"][item_id]["name"]
-                response["log"].append(f"🎁 战利品掉落：【{item_name}】出现在地上！")
+                response["log"].append(f"战利品掉落：【{item_name}】出现在地上！")
             self.end_battle()
             response["success"] = True
-            response["message"] = "🏆 战斗胜利！"
+            response["message"] = "战斗胜利！"
             response["defeated"] = enemy["id"]
             return response
 
@@ -195,24 +194,24 @@ class CombatSystem:
         e_damage = self._damage(enemy["attack"], player["defense"])
         new_hp = player["hp"] - e_damage
         self._state["player_hp"] = new_hp
-        response["log"].append(f"🩸 【{enemy['name']}】反击，对你造成 **{e_damage}** 点伤害！")
+        response["log"].append(f"【{enemy['name']}】反击，对你造成 **{e_damage}** 点伤害！")
         self._bus.publish("COMBAT_DAMAGE", attacker=enemy["id"], defender="player", damage=e_damage)
 
         # 玩家死了？
         if new_hp <= 0:
             self._bus.publish("COMBAT_DEATH", dead="player")
-            response["log"].append("☠️ 你被打倒了...")
+            response["log"].append("你被打倒了...")
             # 玩家死亡：回酒馆满血复活，敌人重置（MVP 不做惩罚）
             self._state["player_hp"] = self._state["player_max_hp"]
             self._state["current_scene"] = "tavern"
             self.end_battle()
             response["success"] = False
-            response["message"] = "☠️ 你被打倒了！被好心人救回了酒馆，满血复活。"
+            response["message"] = "你被打倒了！被好心人救回了酒馆，满血复活。"
             response["player_dead"] = True
             return response
 
         response["success"] = True
-        response["message"] = "⚔️ 回合结束"
+        response["message"] = "回合结束"
         response["player"] = self._get_player_stats()
         return response
 

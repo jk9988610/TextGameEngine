@@ -29,7 +29,7 @@ async function fetchState() {
     // 渲染场景：名字进卡片标题，时间进底部状态栏
     document.getElementById('scene-name').textContent = data.scene.name;
     document.getElementById('scene-desc').textContent = data.scene.description;
-    document.getElementById('status-scene').textContent = '📍 ' + data.scene.name;
+    document.getElementById('status-scene').textContent = data.scene.name;
     document.getElementById('status-time').textContent = formatGameTime(data.game_time);
 
     // 渲染可拿取物品 —— 空了就整块隐藏
@@ -43,7 +43,7 @@ async function fetchState() {
         data.scene.items_here.forEach(item => {
             const btn = document.createElement('button');
             btn.className = 'action-btn';
-            btn.textContent = `📦 拿取：${item.name}`;
+            btn.textContent = `拿取：${item.name}`;
             btn.onclick = () => doAction('take_item', item.id);
             itemsList.appendChild(btn);
         });
@@ -61,7 +61,7 @@ async function fetchState() {
             const targetName = SCENE_NAMES[exit.id] || exit.id;
             if (exit.locked) {
                 btn.className = 'action-btn locked';
-                btn.textContent = `🔒 ${targetName}`;
+                btn.textContent = `${targetName}（锁定）`;
                 btn.disabled = true;
             } else if (exit.id === _prevSceneId) {
                 btn.className = 'action-btn back';
@@ -85,7 +85,7 @@ async function fetchState() {
         data.npcs_here.forEach(npc => {
             const btn = document.createElement('button');
             btn.className = 'action-btn';
-            btn.textContent = `${npc.avatar} 和 ${npc.name} 说话`;
+            btn.textContent = `和 ${npc.name} 说话`;
             btn.onclick = () => startNpcDialogue(npc.id);
             npcList.appendChild(btn);
         });
@@ -102,8 +102,8 @@ async function fetchState() {
         data.enemies_here.forEach(enemy => {
             const btn = document.createElement('button');
             btn.className = 'action-btn';
-            btn.style.borderColor = '#e94560';
-            btn.textContent = `${enemy.avatar} 挑战 ${enemy.name}`;
+            btn.style.borderColor = 'var(--danger)';
+            btn.textContent = `挑战 ${enemy.name}`;
             btn.onclick = () => startEnemyCombat(enemy.id);
             enemyList.appendChild(btn);
         });
@@ -137,12 +137,13 @@ function formatGameTime(seconds) {
     const days = Math.floor(seconds / 86400) + 1;
     const hours = Math.floor((seconds % 86400) / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
-    return `⏳ 第${days}天 ${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
+    return `第${days}天 ${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
 }
 
 // ---------- NPC 对话逻辑 ----------
 const dialoguePanel = document.getElementById('dialogue-panel');
 const dialogueCloseBtn = document.getElementById('dialogue-close');
+let _dialogueActive = false;   // 跟踪弹窗激活态，用于"仅重开时回中"
 
 // 玩家点"和 XX 说话"按钮 → 主动启动对话
 async function startNpcDialogue(npcId) {
@@ -172,13 +173,15 @@ async function fetchDialogue() {
 }
 
 function renderDialogue(d) {
-    /** 渲染对话面板 */
+    /** 渲染对话面板（仅在 无→有 的切换瞬间回中，避免拖动后被轮询拉回） */
     if (!d || !d.active) {
         dialoguePanel.classList.remove('active');
+        _dialogueActive = false;
         return;
     }
+    if (!_dialogueActive) resetModalPosition(dialoguePanel);
+    _dialogueActive = true;
     dialoguePanel.classList.add('active');
-    document.getElementById('dialogue-avatar').textContent = d.npc_avatar || '🧑';
     document.getElementById('dialogue-name').textContent = d.npc_name || 'NPC';
     document.getElementById('dialogue-text').textContent = d.text || '...';
 
@@ -223,6 +226,7 @@ async function selectDialogueChoice(choiceIndex) {
 const combatPanel = document.getElementById('combat-panel');
 const combatLog = document.getElementById('combat-log');
 const attackBtn = document.getElementById('attack-btn');
+let _combatActive = false;     // 跟踪弹窗激活态，用于"仅重开时回中"
 
 attackBtn.addEventListener('click', () => attackEnemy());
 
@@ -248,16 +252,18 @@ async function fetchCombat() {
 }
 
 function renderCombat(d) {
-    /** 渲染战斗面板 */
+    /** 渲染战斗面板（仅在 无→有 的切换瞬间回中，攻击轮询不拉回位置，残血战斗位置保持） */
     if (!d || !d.active) {
         combatPanel.classList.remove('active');
+        _combatActive = false;
         return;
     }
+    if (!_combatActive) resetModalPosition(combatPanel);
+    _combatActive = true;
     combatPanel.classList.add('active');
 
     // 敌人
     const e = d.enemy;
-    document.getElementById('enemy-avatar').textContent = e.avatar || '👾';
     document.getElementById('enemy-name').textContent = e.name || '敌人';
     const enemyHpPct = Math.max(0, (e.hp / e.max_hp) * 100);
     document.getElementById('enemy-hp-bar').style.width = enemyHpPct + '%';

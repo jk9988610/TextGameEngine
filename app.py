@@ -135,7 +135,7 @@ def serve_index():
 def get_state():
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     scene_id = e["game_state"].get("current_scene", "")
     return jsonify({
         "scene": e["scene_manager"].get_current_scene(),
@@ -152,7 +152,7 @@ def start_dialogue():
     """玩家点"和 XX 说话" → 手动启动对话"""
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     result = e["npc_system"].start_dialogue(data.get("npc_id", ""))
     return jsonify(result)
@@ -163,7 +163,7 @@ def start_combat():
     """玩家点"挑战 XX" → 手动开始/继续战斗（保留敌人残血）"""
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     result = e["combat_system"].start_battle(data.get("enemy_id", ""))
     return jsonify(result)
@@ -173,7 +173,7 @@ def start_combat():
 def handle_action():
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     action_type = data.get("type")
     action_target = data.get("target")
@@ -186,7 +186,7 @@ def handle_action():
     elif action_type == "use_item":
         result = e["item_system"].use_item(action_target, data.get("target_id"))
     else:
-        result = {"success": False, "message": f"❌ 未知操作类型：{action_type}"}
+        result = {"success": False, "message": f"未知操作类型：{action_type}"}
 
     # 🆕 玩家做了操作 → 推进游戏时间（最简单：每种操作固定秒数）
     if result.get("success"):
@@ -203,7 +203,7 @@ def handle_action():
 def handle_console():
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     return jsonify({"output": e["console_handler"].handle(data.get("command", ""))})
 
@@ -212,7 +212,7 @@ def handle_console():
 def get_dialogue():
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     return jsonify(e["npc_system"].get_dialogue_for_api())
 
 
@@ -220,7 +220,7 @@ def get_dialogue():
 def handle_dialogue():
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     return jsonify(e["npc_system"].select_choice(data.get("choice_index", 0)))
 
@@ -229,7 +229,7 @@ def handle_dialogue():
 def get_combat():
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     return jsonify(e["combat_system"].get_battle_for_api())
 
 
@@ -237,7 +237,7 @@ def get_combat():
 def handle_attack():
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     result = e["combat_system"].player_attack(data.get("weapon_id", ""))
     # 🆕 战斗推进游戏时间（1分钟/回合）
@@ -294,7 +294,7 @@ def auth_logout():
     session.pop('_last_autosave', None)
     session.pop('mode', None)       # 清掉 mode，让前端重新选
     # session.pop('sid', None)      # ❌ 不要清！sid 是离线模式隔离键
-    return jsonify({"success": True, "message": "👋 已退出登录"})
+    return jsonify({"success": True, "message": "已退出登录"})
 
 
 @app.route('/api/auth/me', methods=['GET'])
@@ -325,7 +325,7 @@ def list_saves():
     """
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
 
     # 从 DB 拉已有的存档记录
     existing = {s["slot_name"]: s for s in SM_SAVE.list_slots(e['_sid'])}
@@ -371,16 +371,16 @@ def manual_save():
     """
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
 
     if e['_mode'] == 'online':
-        return jsonify({"success": False, "message": "⚠️ 在线模式自动存档，无需手动保存"}), 403
+        return jsonify({"success": False, "message": "在线模式自动存档，无需手动保存"}), 403
 
     data = request.json or {}
     slot_name = (data.get("slot_name") or "slot_1").strip()
     # 安全校验：只允许 slot_1 ~ slot_5
     if slot_name not in [f"slot_{i}" for i in range(1, 6)]:
-        return jsonify({"success": False, "message": "❌ 槽位名无效，可用：slot_1~slot_5"})
+        return jsonify({"success": False, "message": "槽位名无效，可用：slot_1~slot_5"})
 
     result = SM_SAVE.save_slot(e['_sid'], slot_name, e["game_state"], is_auto=False)
     session['_last_autosave'] = 0
@@ -395,10 +395,10 @@ def quick_save():
     """
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
 
     if e['_mode'] == 'online':
-        return jsonify({"success": False, "message": "⚠️ 在线模式自动存档，无需手动保存"}), 403
+        return jsonify({"success": False, "message": "在线模式自动存档，无需手动保存"}), 403
 
     result = SM_SAVE.save_slot(e['_sid'], "quick", e["game_state"], is_auto=False)
     session['_last_autosave'] = 0
@@ -410,16 +410,16 @@ def load_save():
     """从指定槽位读档 → 覆盖当前 game_state"""
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
 
     data = request.json or {}
     slot_name = data.get("slot_name", "").strip()
     if not slot_name:
-        return jsonify({"success": False, "message": "❌ 请指定槽位名"})
+        return jsonify({"success": False, "message": "请指定槽位名"})
 
     loaded = SM_SAVE.load_slot(e['_sid'], slot_name)
     if not loaded:
-        return jsonify({"success": False, "message": f"❌ 槽位 {slot_name} 是空的"})
+        return jsonify({"success": False, "message": f"槽位 {slot_name} 是空的"})
 
     # 覆盖当前隔离键的 game_state
     e["game_state"].clear()
@@ -427,7 +427,7 @@ def load_save():
     # 触发 SCENE_ENTER → 让 NPC/战斗系统同步场景（对话、刷怪）
     e["bus"].publish("SCENE_ENTER", scene_id=e["game_state"]["current_scene"])
     session['_last_autosave'] = 0
-    return jsonify({"success": True, "message": f"📂 已读取槽位 {slot_name} 的存档"})
+    return jsonify({"success": True, "message": f"已读取槽位 {slot_name} 的存档"})
 
 
 @app.route('/api/save', methods=['DELETE'])
@@ -435,19 +435,19 @@ def delete_save():
     """删除一个槽位的存档 —— 离线模式专属"""
     e = _get_engines()
     if not e:
-        return jsonify({"success": False, "message": "⚠️ 请先登录（在线模式）"}), 401
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
 
     if e['_mode'] == 'online':
-        return jsonify({"success": False, "message": "⚠️ 在线模式不允许删除存档"}), 403
+        return jsonify({"success": False, "message": "在线模式不允许删除存档"}), 403
 
     data = request.json or {}
     slot_name = data.get("slot_name", "").strip()
     if not slot_name:
-        return jsonify({"success": False, "message": "❌ 请指定槽位名"})
+        return jsonify({"success": False, "message": "请指定槽位名"})
     ok = SM_SAVE.delete_slot(e['_sid'], slot_name)
     if ok:
-        return jsonify({"success": True, "message": f"🗑️ 已删除槽位 {slot_name}"})
-    return jsonify({"success": False, "message": f"❌ 槽位 {slot_name} 不存在"})
+        return jsonify({"success": True, "message": f"已删除槽位 {slot_name}"})
+    return jsonify({"success": False, "message": f"槽位 {slot_name} 不存在"})
 
 
 # ============================================================
