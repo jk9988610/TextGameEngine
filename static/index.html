@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文字游戏引擎 MVP</title>
+    <style>
+        /* 基础风格：复古RPG氛围 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Georgia', 'SimSun', serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+        /* 顶部标题栏 */
+        header {
+            background: #16213e;
+            padding: 1rem 2rem;
+            border-bottom: 2px solid #0f3460;
+            text-align: center;
+        }
+        header h1 {
+            font-size: 1.8rem;
+            color: #e94560;
+            letter-spacing: 2px;
+        }
+        header p {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-top: 0.3rem;
+        }
+        /* 主内容区 */
+        main {
+            flex: 1;
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            width: 100%;
+        }
+        /* 场景卡片 */
+        .scene-card {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .scene-card h2 {
+            color: #e94560;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #0f3460;
+            padding-bottom: 0.5rem;
+        }
+        .scene-card .description {
+            line-height: 1.8;
+            color: #cbd5e1;
+            margin-bottom: 1.5rem;
+        }
+        /* 可交互区域 */
+        .interact-section { margin-bottom: 1.2rem; }
+        .interact-section h3 {
+            font-size: 1rem;
+            color: #94a3b8;
+            margin-bottom: 0.8rem;
+        }
+        .button-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+        .action-btn {
+            background: #0f3460;
+            border: 1px solid #e94560;
+            color: #e0e0e0;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+        .action-btn:hover:not(:disabled) {
+            background: #e94560;
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: #555;
+        }
+        .action-btn.locked {
+            border-color: #666;
+            background: #2d2d2d;
+        }
+        /* 消息提示 */
+        .message {
+            background: #0f3460;
+            border-left: 3px solid #e94560;
+            padding: 0.8rem 1rem;
+            margin-top: 1rem;
+            border-radius: 0 4px 4px 0;
+            min-height: 1.2rem;
+            font-size: 0.9rem;
+        }
+        /* 背包区 */
+        .inventory {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        .inventory h3 {
+            color: #94a3b8;
+            margin-bottom: 0.6rem;
+        }
+        .inventory .items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+        .inventory .item {
+            background: #0f3460;
+            padding: 0.3rem 0.7rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+            border: 1px solid #0f3460;
+        }
+        .inventory .empty {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+        /* ========== 开发者控制台 ========== */
+        #dev-console {
+            display: none;  /* 默认隐藏，按~键显示 */
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40vh;
+            background: #0a0a0a;
+            border-top: 3px solid #e94560;
+            z-index: 1000;
+            flex-direction: column;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.8);
+        }
+        #console-header {
+            background: #16213e;
+            padding: 0.5rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #0f3460;
+        }
+        #console-header h3 {
+            color: #e94560;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+        #close-console {
+            background: none;
+            border: none;
+            color: #e94560;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        #console-log {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        #console-log div { margin-bottom: 0.2rem; }
+        #console-log .dev-cmd { color: #9f9; }
+        #console-log .engine-output { color: #9cf; }
+        #console-log .error { color: #f99; }
+        #console-input-area {
+            background: #16213e;
+            padding: 0.5rem 1rem;
+            border-top: 1px solid #0f3460;
+            display: flex;
+            gap: 0.5rem;
+        }
+        #console-input {
+            flex: 1;
+            background: #0a0a0a;
+            border: 1px solid #0f3460;
+            color: #e0e0e0;
+            padding: 0.4rem 0.6rem;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        #console-input:focus { border-color: #e94560; }
+        #console-send {
+            background: #e94560;
+            color: #fff;
+            border: none;
+            padding: 0.4rem 1rem;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        #console-send:hover { background: #d63a54; }
+        /* 底部提示 */
+        .footer-hint {
+            text-align: center;
+            padding: 1rem;
+            color: #64748b;
+            font-size: 0.8rem;
+        }
+        /* 响应式 */
+        @media (max-width: 600px) {
+            header h1 { font-size: 1.4rem; }
+            main { margin: 1rem auto; }
+            .button-list { gap: 0.4rem; }
+            .action-btn { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部标题栏 -->
+    <header>
+        <h1>⚔️ 文字游戏引擎 MVP</h1>
+        <p>点击操作即可游玩 | 按 <kbd style="background:#0f3460;padding:0.1rem 0.4rem;border-radius:3px;">~</kbd> 键打开开发者控制台</p>
+    </header>
+
+    <!-- 主游戏区 -->
+    <main>
+        <!-- 场景卡片 -->
+        <div class="scene-card">
+            <h2 id="scene-name">加载中...</h2>
+            <p class="description" id="scene-desc">正在从服务器获取场景数据...</p>
+            
+            <!-- 可拿取的物品 -->
+            <div class="interact-section">
+                <h3>🎒 可拿取的物品</h3>
+                <div class="button-list" id="items-list">
+                    <span style="color:#64748b;">（这里没有物品）</span>
+                </div>
+            </div>
+
+            <!-- 可走的出口 -->
+            <div class="interact-section">
+                <h3>🚪 可前往的出口</h3>
+                <div class="button-list" id="exits-list">
+                    <span style="color:#64748b;">（这里没有出口）</span>
+                </div>
+            </div>
+
+            <!-- 操作消息提示 -->
+            <div class="message" id="action-message">欢迎来到文字游戏引擎！点击上面的按钮开始探索吧～</div>
+        </div>
+
+        <!-- 玩家背包 -->
+        <div class="inventory">
+            <h3>🎒 玩家背包</h3>
+            <div class="items" id="player-inventory">
+                <span class="empty">（背包是空的）</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部提示 -->
+    <div class="footer-hint">💡 提示：按 ~ 键打开开发者控制台，可以用 teleport、add_item、save 等命令调试游戏</div>
+
+    <!-- ========== 开发者控制台（默认隐藏） ========== -->
+    <div id="dev-console">
+        <div id="console-header">
+            <h3>⌨️  开发者控制台</h3>
+            <button id="close-console" title="关闭控制台">✕</button>
+        </div>
+        <div id="console-log">
+            <div class="engine-output">欢迎来到开发者控制台！可用命令：</div>
+            <div class="engine-output">  • teleport <场景ID>  传送到指定场景（tavern/forest/cave）</div>
+            <div class="engine-output">  • add_item <物品ID>  给背包添加物品（rusty_key/torch/gold_coin）</div>
+            <div class="engine-output">  • save              保存快照到 game_data/snapshot.json</div>
+            <div class="engine-output">  • load              读取快照</div>
+            <div class="engine-output">  • reset             重置游戏</div>
+        </div>
+        <div id="console-input-area">
+            <input type="text" id="console-input" placeholder="输入命令后回车..." autocomplete="off">
+            <button id="console-send">发送</button>
+        </div>
+    </div>
+
+    <!-- ========== 前端逻辑 ========== -->
+    <script>
+        // 全局状态
+        let consoleVisible = false;
+
+        // ---------- 控制台切换逻辑 ----------
+        const devConsole = document.getElementById('dev-console');
+        const consoleInput = document.getElementById('console-input');
+        const consoleLog = document.getElementById('console-log');
+        const closeConsoleBtn = document.getElementById('close-console');
+        const consoleSendBtn = document.getElementById('console-send');
+
+        // 全局监听 ~ 键（keyCode=192）切换控制台
+        document.addEventListener('keydown', (e) => {
+            if (e.keyCode === 192) { // ~ 键
+                e.preventDefault();  // 阻止默认的波形符输入
+                toggleConsole();
+            }
+            // 控制台显示时，回车发送命令
+            if (e.keyCode === 13 && consoleVisible) {
+                e.preventDefault();
+                const cmd = consoleInput.value.trim();
+                if (cmd) sendConsoleCommand(cmd);
+                consoleInput.value = '';
+            }
+            // ESC 关闭控制台
+            if (e.keyCode === 27 && consoleVisible) {
+                toggleConsole();
+            }
+        });
+
+        // 关闭按钮
+        closeConsoleBtn.addEventListener('click', () => toggleConsole());
+        // 发送按钮
+        consoleSendBtn.addEventListener('click', () => {
+            const cmd = consoleInput.value.trim();
+            if (cmd) sendConsoleCommand(cmd);
+            consoleInput.value = '';
+        });
+
+        function toggleConsole() {
+            consoleVisible = !consoleVisible;
+            devConsole.style.display = consoleVisible ? 'flex' : 'none';
+            if (consoleVisible) consoleInput.focus();
+        }
+
+        // ---------- 游戏后端交互 ----------
+        const SCENE_NAMES = { tavern: '破旧的酒馆', forest: '幽暗的森林', cave: '神秘的洞穴' };
+
+        async function fetchState() {
+            /** 从后端拉取当前游戏状态并渲染 */
+            const res = await fetch('/api/state');
+            const data = await res.json();
+            
+            // 渲染场景
+            document.getElementById('scene-name').textContent = data.scene.name;
+            document.getElementById('scene-desc').textContent = data.scene.description;
+            
+            // 渲染可拿取物品
+            const itemsList = document.getElementById('items-list');
+            itemsList.innerHTML = '';
+            if (data.scene.items_here.length === 0) {
+                itemsList.innerHTML = '<span style="color:#64748b;">（这里没有物品）</span>';
+            } else {
+                data.scene.items_here.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.className = 'action-btn';
+                    btn.textContent = `📦 拿取：${item.name}`;
+                    btn.onclick = () => doAction('take_item', item.id);
+                    itemsList.appendChild(btn);
+                });
+            }
+
+            // 渲染可走出口
+            const exitsList = document.getElementById('exits-list');
+            exitsList.innerHTML = '';
+            if (data.scene.exits.length === 0) {
+                exitsList.innerHTML = '<span style="color:#64748b;">（这里没有出口）</span>';
+            } else {
+                data.scene.exits.forEach(exit => {
+                    const btn = document.createElement('button');
+                    btn.className = 'action-btn' + (exit.locked ? ' locked' : '');
+                    const targetName = SCENE_NAMES[exit.id] || exit.id;
+                    btn.textContent = exit.locked 
+                        ? `🔒 ${targetName}（已锁定）` 
+                        : `🚶 前往：${targetName}`;
+                    btn.disabled = exit.locked;
+                    btn.onclick = () => doAction('move_scene', exit.id);
+                    exitsList.appendChild(btn);
+                });
+            }
+
+            // 渲染玩家背包
+            const invList = document.getElementById('player-inventory');
+            invList.innerHTML = '';
+            if (data.player_inventory.length === 0) {
+                invList.innerHTML = '<span class="empty">（背包是空的）</span>';
+            } else {
+                data.player_inventory.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'item';
+                    div.textContent = `• ${item.name}`;
+                    invList.appendChild(div);
+                });
+            }
+        }
+
+        async function doAction(type, target) {
+            /** 发送点击操作到后端 */
+            const res = await fetch('/api/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, target })
+            });
+            const data = await res.json();
+            // 显示后端返回的消息
+            document.getElementById('action-message').textContent = data.message;
+            // 刷新游戏状态
+            fetchState();
+        }
+
+        async function sendConsoleCommand(cmd) {
+            /** 发送开发者命令到后端 */
+            // 显示玩家输入
+            const inputDiv = document.createElement('div');
+            inputDiv.className = 'dev-cmd';
+            inputDiv.textContent = `> ${cmd}`;
+            consoleLog.appendChild(inputDiv);
+            
+            // 调用后端
+            const res = await fetch('/api/console', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: cmd })
+            });
+            const data = await res.json();
+            
+            // 显示后端输出
+            const outputDiv = document.createElement('div');
+            outputDiv.className = data.output.includes('❌') || data.output.includes('❓') ? 'error' : 'engine-output';
+            outputDiv.textContent = data.output;
+            consoleLog.appendChild(outputDiv);
+            
+            // 滚动到底部
+            consoleLog.scrollTop = consoleLog.scrollHeight;
+            // 刷新游戏状态（控制台命令也会改变状态）
+            fetchState();
+        }
+
+        // ---------- 初始化 ----------
+        // 页面加载完成后，先拉一次游戏状态
+        document.addEventListener('DOMContentLoaded', () => fetchState());
+    </script>
+</body>
+</html>
