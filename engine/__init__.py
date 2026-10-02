@@ -8,6 +8,7 @@ from .item_system import ItemSystem
 from .console_handler import ConsoleHandler
 from .npc_system import NPCSystem
 from .combat_system import CombatSystem
+from .session_manager import SessionManager
 
 __all__ = [
     "EventBus",
@@ -17,4 +18,5 @@ __all__ = [
     "ConsoleHandler",
     "NPCSystem",
     "CombatSystem",
+    "SessionManager",
 ]
