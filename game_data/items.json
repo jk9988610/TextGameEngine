@@ -1,0 +1,24 @@
+{
+  "rusty_key": {
+    "id": "rusty_key",
+    "name": "生锈的钥匙",
+    "description": "一把沾满泥土的钥匙，看起来能开什么门。"
+  },
+  "torch": {
+    "id": "torch",
+    "name": "火把",
+    "description": "一根没点燃的火把，在黑暗的洞穴里很有用。"
+  },
+  "gold_coin": {
+    "id": "gold_coin",
+    "name": "金币",
+    "description": "一枚闪闪发光的金币，能买不少东西。"
+  },
+  "rusty_sword": {
+    "id": "rusty_sword",
+    "name": "生锈的铁剑",
+    "description": "一把布满锈迹的铁剑，剑身却依然锋利。",
+    "is_weapon": true,
+    "damage": 10
+  }
+}

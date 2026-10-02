@@ -1,0 +1,75 @@
+{
+  "npc_1_drunk": {
+    "id": "npc_1_drunk",
+    "name": "醉汉巴尼",
+    "scene_id": "tavern",
+    "avatar": "🍺",
+    "greeting": "greet",
+    "nodes": {
+      "greet": {
+        "text": "（*巴尼眯着醉醺醺的眼睛盯着你*）你...你是新来的吧？坐下来喝一杯？",
+        "choices": [
+          {"text": "好啊，来一杯！", "next": "drink_yes"},
+          {"text": "不用了，我只是路过。", "next": "drink_no"},
+          {"text": "你有没有看到一把生锈的钥匙？", "next": "ask_key"}
+        ]
+      },
+      "drink_yes": {
+        "text": "（*巴尼咧嘴笑了，从怀里掏出一个脏兮兮的杯子*）来来来，喝一杯！不过...这酒可不便宜哦。（*暗示地看了看你的口袋*）",
+        "choices": [
+          {"text": "算了，我身上没带钱。", "next": "drink_no"},
+          {"text": "谢了，改天吧。", "next": "leave"}
+        ]
+      },
+      "drink_no": {
+        "text": "（*巴尼耸耸肩，又倒在桌上打呼噜了*）哼，没眼光的小子...",
+        "choices": [
+          {"text": "（离开）", "next": "leave"}
+        ]
+      },
+      "ask_key": {
+        "text": "（*巴尼突然清醒了一些，压低声音*）生锈的钥匙？哦...有人早上把它丢在外面那棵老橡树下了。那地方...好像通向什么神秘的洞穴。（*他又醉过去了*）",
+        "choices": [
+          {"text": "谢谢提示！", "next": "leave"}
+        ]
+      },
+      "leave": {
+        "text": "（*你悄悄离开了醉汉身边*）",
+        "choices": []
+      }
+    }
+  },
+  "npc_2_sprite": {
+    "id": "npc_2_sprite",
+    "name": "森林精灵莉娅",
+    "scene_id": "forest",
+    "avatar": "🧚",
+    "greeting": "greet",
+    "nodes": {
+      "greet": {
+        "text": "（*一位半透明的精灵在你面前浮现，翅膀微微扇动*）你好啊，旅行者。我是这片森林的守护者。",
+        "choices": [
+          {"text": "你好！这片森林里有什么秘密吗？", "next": "secret"},
+          {"text": "这把钥匙...你知道是开什么的吗？（需要 rusty_key）", "next": "has_key", "requires_item": "rusty_key"},
+          {"text": "（默默离开）", "next": "leave"}
+        ]
+      },
+      "secret": {
+        "text": "（*莉娅的表情变得严肃*）这片森林深处有一个神秘的洞穴，里面藏着远古的宝藏。但洞穴被锁住了...需要一把特殊的钥匙才能打开。（*她意味深长地看着你*）",
+        "choices": [
+          {"text": "多谢告诉我！", "next": "leave"}
+        ]
+      },
+      "has_key": {
+        "text": "（*莉娅睁大了眼睛*）哇！你真的找到了那把钥匙！你可以用它打开森林西边的洞穴门哦。小心里面的东西...据说洞穴深处有一只小怪物。（*她给了你一个鼓励的微笑*）",
+        "choices": [
+          {"text": "好的，我去看看！", "next": "leave"}
+        ]
+      },
+      "leave": {
+        "text": "（*莉娅化作一缕光消失了*）祝你好运，旅行者...",
+        "choices": []
+      }
+    }
+  }
+}

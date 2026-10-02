@@ -134,6 +134,172 @@
             color: #64748b;
             font-size: 0.85rem;
         }
+        /* ========== NPC 对话面板 ========== */
+        .dialogue-panel {
+            background: #1b2838;
+            border: 2px solid #c9a227;
+            border-radius: 8px;
+            padding: 1.2rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: none;  /* 默认隐藏，有对话才显示 */
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .dialogue-panel.active { display: block; }
+        .dialogue-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.8rem;
+            padding-bottom: 0.6rem;
+            border-bottom: 1px solid #c9a227;
+        }
+        .dialogue-avatar {
+            font-size: 1.8rem;
+            line-height: 1;
+        }
+        .dialogue-name {
+            color: #c9a227;
+            font-weight: bold;
+            font-size: 1.05rem;
+        }
+        .dialogue-text {
+            color: #e0e0e0;
+            line-height: 1.8;
+            margin-bottom: 1rem;
+            font-style: italic;
+        }
+        .dialogue-choices {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .dialogue-choice-btn {
+            background: #2d1f0f;
+            border: 1px solid #c9a227;
+            color: #e0e0e0;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .dialogue-choice-btn:hover {
+            background: #c9a227;
+            color: #1a1a2e;
+        }
+        .dialogue-close-btn {
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-decoration: underline;
+            margin-top: 0.5rem;
+            padding: 0;
+        }
+        .dialogue-close-btn:hover { color: #e94560; }
+        /* ========== 战斗面板 ========== */
+        .combat-panel {
+            background: #2a0a0a;
+            border: 2px solid #e94560;
+            border-radius: 8px;
+            padding: 1.2rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: none;
+            animation: shake 0.5s ease;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+            20%, 40%, 60%, 80% { transform: translateX(3px); }
+        }
+        .combat-panel.active { display: block; }
+        .combat-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.8rem;
+            padding-bottom: 0.6rem;
+            border-bottom: 1px solid #e94560;
+        }
+        .enemy-avatar { font-size: 2rem; }
+        .enemy-info h3 {
+            color: #e94560;
+            margin-bottom: 0.3rem;
+        }
+        .hp-bar-container {
+            width: 100%;
+            height: 18px;
+            background: #1a1a1a;
+            border-radius: 3px;
+            overflow: hidden;
+            border: 1px solid #555;
+        }
+        .hp-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e94560, #ff6b6b);
+            transition: width 0.3s ease;
+        }
+        .hp-text {
+            font-size: 0.8rem;
+            color: #e0e0e0;
+            margin-top: 0.2rem;
+        }
+        .player-hp-row {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-top: 0.8rem;
+            padding-top: 0.8rem;
+            border-top: 1px dashed #555;
+        }
+        .player-hp-row .hp-bar-container { flex: 1; }
+        .player-label {
+            font-weight: bold;
+            color: #4ade80;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        .combat-log {
+            background: #1a0a0a;
+            border-radius: 4px;
+            padding: 0.8rem;
+            margin-top: 0.8rem;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .combat-log .log-player { color: #4ade80; }
+        .combat-log .log-enemy { color: #ff6b6b; }
+        .combat-log .log-system { color: #c9a227; }
+        .combat-actions {
+            display: flex;
+            gap: 0.6rem;
+            margin-top: 0.8rem;
+        }
+        .combat-btn {
+            background: #e94560;
+            border: none;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .combat-btn:hover { background: #d63a54; transform: translateY(-1px); }
+        .combat-btn:disabled { background: #555; cursor: not-allowed; transform: none; }
+        .combat-btn.flee { background: #64748b; }
+        .combat-btn.flee:hover { background: #475569; }
         /* ========== 开发者控制台 ========== */
         #dev-console {
             display: none;  /* 默认隐藏，按~键显示 */
@@ -257,6 +423,47 @@
 
             <!-- 操作消息提示 -->
             <div class="message" id="action-message">欢迎来到文字游戏引擎！点击上面的按钮开始探索吧～</div>
+        </div>
+
+        <!-- 🆕 NPC 对话面板（默认隐藏，有对话才显示） -->
+        <div class="dialogue-panel" id="dialogue-panel">
+            <div class="dialogue-header">
+                <span class="dialogue-avatar" id="dialogue-avatar">🧑</span>
+                <span class="dialogue-name" id="dialogue-name">NPC</span>
+            </div>
+            <div class="dialogue-text" id="dialogue-text">对话内容加载中...</div>
+            <div class="dialogue-choices" id="dialogue-choices"></div>
+            <button class="dialogue-close-btn" id="dialogue-close">（跳过对话）</button>
+        </div>
+
+        <!-- 🆕 战斗面板（默认隐藏，有敌人场景自动弹出） -->
+        <div class="combat-panel" id="combat-panel">
+            <div class="combat-header">
+                <span class="enemy-avatar" id="enemy-avatar">👾</span>
+                <div class="enemy-info">
+                    <h3 id="enemy-name">敌人</h3>
+                    <div class="hp-bar-container">
+                        <div class="hp-bar-fill" id="enemy-hp-bar" style="width:100%"></div>
+                    </div>
+                    <div class="hp-text" id="enemy-hp-text">HP: 30/30</div>
+                </div>
+            </div>
+            <!-- 战斗日志 -->
+            <div class="combat-log" id="combat-log">
+                <span class="log-system">⚔️ 战斗开始！</span>
+            </div>
+            <!-- 玩家HP -->
+            <div class="player-hp-row">
+                <span class="player-label">🧑 你</span>
+                <div class="hp-bar-container">
+                    <div class="hp-bar-fill" id="player-hp-bar" style="width:100%; background:linear-gradient(90deg,#4ade80,#22c55e);"></div>
+                </div>
+                <span class="hp-text" id="player-hp-text">HP: 50/50</span>
+            </div>
+            <!-- 战斗按钮 -->
+            <div class="combat-actions">
+                <button class="combat-btn" id="attack-btn">⚔️ 攻击！</button>
+            </div>
         </div>
 
         <!-- 玩家背包 -->
@@ -396,6 +603,148 @@
                     invList.appendChild(div);
                 });
             }
+
+            // 🆕 同时拉取对话状态并渲染
+            await fetchDialogue();
+            // 🆕 同时拉取战斗状态并渲染
+            await fetchCombat();
+        }
+
+        // ---------- 🆕 NPC 对话逻辑 ----------
+        const dialoguePanel = document.getElementById('dialogue-panel');
+        const dialogueCloseBtn = document.getElementById('dialogue-close');
+
+        // 跳过对话按钮（后端 end_dialogue 还没路由，前端直接隐藏）
+        dialogueCloseBtn.addEventListener('click', async () => {
+            // 前端直接隐藏面板即可，后端 SCENE_LEAVE 会自动清状态
+            dialoguePanel.classList.remove('active');
+        });
+
+        async function fetchDialogue() {
+            /** 从后端拉取对话状态并渲染 */
+            const res = await fetch('/api/dialogue');
+            const data = await res.json();
+            renderDialogue(data);
+        }
+
+        function renderDialogue(d) {
+            /** 渲染对话面板 */
+            if (!d || !d.active) {
+                dialoguePanel.classList.remove('active');
+                return;
+            }
+            dialoguePanel.classList.add('active');
+            document.getElementById('dialogue-avatar').textContent = d.npc_avatar || '🧑';
+            document.getElementById('dialogue-name').textContent = d.npc_name || 'NPC';
+            document.getElementById('dialogue-text').textContent = d.text || '...';
+
+            const choicesDiv = document.getElementById('dialogue-choices');
+            choicesDiv.innerHTML = '';
+            if (!d.choices || d.choices.length === 0) {
+                // 没有选项 → 对话即将结束，显示"继续"按钮
+                const btn = document.createElement('button');
+                btn.className = 'dialogue-choice-btn';
+                btn.textContent = '继续...';
+                btn.onclick = async () => {
+                    // 选 -1 表示结束对话（后端如果 choices 为空，前端直接隐藏）
+                    dialoguePanel.classList.remove('active');
+                };
+                choicesDiv.appendChild(btn);
+            } else {
+                d.choices.forEach((choice, i) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'dialogue-choice-btn';
+                    btn.textContent = choice.text;
+                    btn.onclick = () => selectDialogueChoice(i);
+                    choicesDiv.appendChild(btn);
+                });
+            }
+        }
+
+        async function selectDialogueChoice(choiceIndex) {
+            /** 发送对话选项到后端 */
+            const res = await fetch('/api/dialogue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ choice_index: choiceIndex })
+            });
+            const data = await res.json();
+            // 显示操作结果
+            document.getElementById('action-message').textContent = data.message || '';
+            // 刷新游戏状态（场景/背包可能因为对话变化）+ 刷新对话
+            await fetchState();
+        }
+
+        // ---------- 🆕 战斗逻辑 ----------
+        const combatPanel = document.getElementById('combat-panel');
+        const combatLog = document.getElementById('combat-log');
+        const attackBtn = document.getElementById('attack-btn');
+
+        attackBtn.addEventListener('click', () => attackEnemy());
+
+        async function fetchCombat() {
+            /** 从后端拉取战斗状态并渲染 */
+            const res = await fetch('/api/combat');
+            const data = await res.json();
+            renderCombat(data);
+        }
+
+        function renderCombat(d) {
+            /** 渲染战斗面板 */
+            if (!d || !d.active) {
+                combatPanel.classList.remove('active');
+                return;
+            }
+            combatPanel.classList.add('active');
+
+            // 敌人
+            const e = d.enemy;
+            document.getElementById('enemy-avatar').textContent = e.avatar || '👾';
+            document.getElementById('enemy-name').textContent = e.name || '敌人';
+            const enemyHpPct = Math.max(0, (e.hp / e.max_hp) * 100);
+            document.getElementById('enemy-hp-bar').style.width = enemyHpPct + '%';
+            document.getElementById('enemy-hp-text').textContent = `HP: ${e.hp}/${e.max_hp}  |  ATK: ${e.attack}  DEF: ${e.defense}`;
+
+            // 玩家
+            const p = d.player;
+            const playerHpPct = Math.max(0, (p.hp / p.max_hp) * 100);
+            document.getElementById('player-hp-bar').style.width = playerHpPct + '%';
+            document.getElementById('player-hp-text').textContent = `HP: ${p.hp}/${p.max_hp}  |  ATK: ${p.attack}  DEF: ${p.defense}`;
+
+            // 攻击按钮（检查背包里有没有武器）
+            const hasWeapon = document.querySelectorAll('#player-inventory .item')
+                .some(el => el.textContent.includes('铁剑') || el.textContent.includes('rusty_sword'));
+            attackBtn.disabled = !hasWeapon;
+        }
+
+        async function attackEnemy() {
+            /** 玩家攻击敌人：用 rusty_sword */
+            combatLog.innerHTML = '';  // 清空旧日志
+            const res = await fetch('/api/combat/attack', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ weapon_id: 'rusty_sword' })
+            });
+            const data = await res.json();
+
+            // 渲染战斗日志
+            (data.log || []).forEach(line => {
+                const div = document.createElement('div');
+                if (line.includes('你用')) div.className = 'log-player';
+                else if (line.includes('反击') || line.includes('对你')) div.className = 'log-enemy';
+                else div.className = 'log-system';
+                div.textContent = line;
+                combatLog.appendChild(div);
+            });
+            combatLog.scrollTop = combatLog.scrollHeight;
+
+            // 显示结果
+            document.getElementById('action-message').textContent = data.message || '';
+
+            // 玩家死亡 → 面板会被移除（后端已处理回酒馆）
+            // 敌人死亡 → 面板会被移除（后端已处理结束战斗）
+            // 刷新所有状态
+            await fetchState();
         }
 
         async function doAction(type, target) {

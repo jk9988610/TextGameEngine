@@ -1,0 +1,12 @@
+{
+  "cave_goblin": {
+    "id": "cave_goblin",
+    "name": "洞穴哥布林",
+    "avatar": "👺",
+    "hp": 30,
+    "attack": 5,
+    "defense": 2,
+    "description": "一只皮糙肉厚的绿皮小怪物，正举着木棒虎视眈眈地盯着你。",
+    "reward_items": ["gold_coin"]
+  }
+}
