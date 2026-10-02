@@ -21,7 +21,16 @@
                     适合个人体验 / GitHub clone
                 </div>
             </div>
-            <div class="mode-card online" onclick="chooseMode('online')">
+            <!--
+              在线模式（多人）自 2026-10-03 起从模式选择页屏蔽：会话隔离/登录/在线存档
+              这一整套是为多人模式服务的，当前没有多人需求，历史上还因隔离逻辑产生过
+              大量排查成本。后端接口与 auth 代码全部保留，仅隐藏入口。
+              需要重新开放多人时：
+                1) 删除下面卡片的 style="display:none"；
+                2) 移除 js/ui.js chooseMode() 里的 ONLINE_DISABLED 拦截；
+                3) 重新规划在线/离线隔离与测试方案（见 README.md「在线模式」一节）。
+            -->
+            <div class="mode-card online" style="display:none;" onclick="chooseMode('online')">
                 <div class="mode-title">在线模式</div>
                 <div class="mode-desc">
                     多人同场，需账号登录<br>

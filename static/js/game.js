@@ -250,9 +250,10 @@ async function selectDialogueChoice(choiceIndex) {
         body: JSON.stringify({ choice_index: choiceIndex })
     });
     const data = await res.json();
-    // 显示操作结果
-    showActionMsg(data.message || '');
-    // 刷新游戏状态（场景/背包可能因为对话变化）+ 刷新对话
+    // 选项可能挂效果（给物品/祝福/传送/开战等），把效果反馈一并提示给玩家
+    const messages = [data.message, ...(data.effect_messages || [])].filter(Boolean);
+    showActionMsg(messages.join('\n'));
+    // 刷新游戏状态（场景/背包/HP/战斗可能因为对话效果变化）+ 刷新对话
     await fetchState();
 }
 
@@ -290,6 +291,14 @@ function renderCombat(d) {
     if (!d || !d.active) {
         combatPanel.classList.remove('active');
         _combatActive = false;
+        // 非战斗态也同步玩家数据：对话效果（祝福/回血）改了 HP 后，下次打开面板即正确
+        if (d && d.player) {
+            const p = d.player;
+            document.getElementById('player-hp-bar').style.width =
+                Math.max(0, (p.hp / p.max_hp) * 100) + '%';
+            document.getElementById('player-hp-text').textContent =
+                `HP: ${p.hp}/${p.max_hp}  |  ATK: ${p.attack}  |  DEF: ${p.defense}`;
+        }
         return;
     }
     if (!_combatActive) resetModalPosition(combatPanel);

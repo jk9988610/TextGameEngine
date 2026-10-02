@@ -209,3 +209,80 @@ body {
 .ed-toast.warning { border-color: var(--warn); }
 
 .hidden { display: none !important; }
+
+/* ---------- NPC 对话树编辑 ---------- */
+.ed-btn.mini {
+    padding: 0.16rem 0.55rem;
+    font-size: 0.72rem;
+    margin-top: 0.35rem;
+}
+
+.npc-rule-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    padding: 0.35rem 0.5rem;
+    margin-bottom: 0.35rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.76rem;
+    color: var(--text-dim);
+}
+.npc-rule-row select,
+.npc-rule-row input { width: auto; min-width: 90px; flex: 0 1 auto; }
+.npc-rule-row .nr-node { flex: 1 1 120px; }
+
+.npc-card {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 5px;
+    padding: 0.55rem 0.65rem;
+    margin-bottom: 0.6rem;
+    background: rgba(37, 37, 38, 0.55);
+}
+.npc-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.76rem;
+    color: var(--text-dim);
+    margin-bottom: 0.4rem;
+}
+.npc-card-head .nnode-id { flex: 0 1 200px; }
+.npc-card-head .ed-btn { margin-top: 0; margin-left: auto; }
+.npc-card .nnode-text { width: 100%; resize: vertical; margin-bottom: 0.4rem; }
+
+.npc-choice {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 0.45rem 0.55rem;
+    margin: 0 0 0.45rem 0.8rem;
+    background: rgba(30, 30, 30, 0.5);
+}
+.npc-choice-line {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    font-size: 0.74rem;
+    color: var(--text-dim);
+    margin-bottom: 0.3rem;
+}
+.npc-choice-line .nc-text { flex: 1 1 200px; }
+.npc-choice-line select,
+.npc-choice-line .nc-cond-param { width: auto; flex: 0 1 130px; }
+.npc-choice-line .nc-next { flex: 1 1 150px; }
+.npc-choice-line .ed-btn { margin-top: 0; }
+
+.npc-effect-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.25rem 0.8rem;
+}
+.npc-effect-row select { width: auto; flex: 0 1 120px; }
+.npc-effect-row .ne-param { flex: 1 1 120px; }
+.npc-effect-row .ed-btn { margin-top: 0; }
+.nc-effects:empty { display: none; }

@@ -18,6 +18,7 @@ from .npc_system import NPCSystem
 from .combat_system import CombatSystem
 from .shop_system import ShopSystem
 from .event_rules import DeclarativeRules
+from .effects import EffectExecutor
 
 
 # config 缺失时的兜底默认值（保证即使没有 game_config.json 引擎也能跑）
@@ -104,6 +105,7 @@ class SessionManager:
             "current_dialogue": None,
             "current_battle": None,
             "killed_enemies": [],          # 被永久击杀的敌人 id
+            "flags": {},                   # 通用剧情标志（对话条件/任务用）
             "game_time": 0,                # 游戏内时间（秒数，每次操作推进）
             "player_hp": player_cfg["hp"],
             "player_max_hp": player_cfg["hp"],
@@ -120,6 +122,12 @@ class SessionManager:
                                         item_system, shop_system=shop_system)
         npc_system = NPCSystem(bus, gd, game_state)
         combat_system = CombatSystem(bus, gd, game_state)
+        # 对话/事件的通用效果执行器（给物品/加标志/传送/开战等跨系统动作）
+        effect_executor = EffectExecutor(
+            gd, game_state,
+            scene_manager=scene_manager,
+            item_system=item_system,
+            combat_system=combat_system)
 
         # 初始化场景状态
         scene_manager.init_scene_states()
@@ -140,6 +148,7 @@ class SessionManager:
             "console_handler": console_handler,
             "npc_system": npc_system,
             "combat_system": combat_system,
+            "effects": effect_executor,
         }
 
     def live_current_scenes(self) -> set:
@@ -155,6 +164,13 @@ class SessionManager:
             return {info["state"]["game_state"]["current_battle"].get("enemy_id")
                     for info in self._sessions.values()
                     if info["state"]["game_state"].get("current_battle")}
+
+    def live_dialogue_npcs(self) -> set:
+        """所有存活会话中玩家正在与之对话的 NPC id 集合（编辑器删 NPC 时做保护）"""
+        with self._lock:
+            return {info["state"]["game_state"]["current_dialogue"].get("npc_id")
+                    for info in self._sessions.values()
+                    if info["state"]["game_state"].get("current_dialogue")}
 
     def refresh_new_scenes(self) -> None:
         """
@@ -179,6 +195,7 @@ class SessionManager:
             "current_dialogue": None,
             "current_battle": None,
             "killed_enemies": [],
+            "flags": {},
             "game_time": 0,
             "player_hp": p["hp"],
             "player_max_hp": p["hp"],

@@ -22,6 +22,7 @@
                 <button class="ed-tab active" data-tab="scenes" type="button">地点</button>
                 <button class="ed-tab" data-tab="items" type="button">物品</button>
                 <button class="ed-tab" data-tab="enemies" type="button">敌人</button>
+                <button class="ed-tab" data-tab="npcs" type="button">NPC</button>
             </div>
             <button class="ed-btn block" id="btn-new" type="button">+ 新建</button>
             <div class="ed-list" id="ed-list"></div>
@@ -167,6 +168,51 @@
                     <button type="button" class="ed-btn primary" id="enemy-save">保存</button>
                     <button type="button" class="ed-btn danger hidden" id="enemy-delete">删除</button>
                     <button type="button" class="ed-btn" id="enemy-cancel">取消</button>
+                </div>
+            </form>
+
+            <!-- NPC 表单（属性 + 问候规则 + 对话节点树，列表式编辑） -->
+            <form class="ed-form hidden" id="form-npc">
+                <h2 id="npc-form-title">新建 NPC</h2>
+                <label class="ed-field">
+                    <span>NPC ID（小写字母/数字/下划线，保存后不可改）</span>
+                    <input type="text" id="npc-id" placeholder="例：npc_merchant">
+                </label>
+                <label class="ed-field">
+                    <span>名称</span>
+                    <input type="text" id="npc-name" placeholder="例：杂货商老杰克">
+                </label>
+                <label class="ed-field">
+                    <span>所在地点</span>
+                    <select id="npc-scene"></select>
+                </label>
+                <label class="ed-field">
+                    <span>默认起始节点 ID</span>
+                    <input type="text" id="npc-greeting" placeholder="greet" value="greet">
+                </label>
+
+                <div class="ed-field">
+                    <span>条件问候（按顺序判断，第一个满足条件的节点作为对话起点；都不满足用默认起始节点）</span>
+                    <div id="npc-rules"></div>
+                    <button type="button" class="ed-btn mini" id="npc-add-rule">+ 添加条件问候</button>
+                </div>
+
+                <div class="ed-field">
+                    <span>对话节点（每个节点是 NPC 说的一段话 + 玩家可选的选项；选项的「下一节点」为空 = 结束对话）</span>
+                    <div id="npc-nodes"></div>
+                    <button type="button" class="ed-btn mini" id="npc-add-node">+ 添加节点</button>
+                </div>
+
+                <!-- 动态下拉候选（节点/物品/敌人/地点） -->
+                <datalist id="npc-dl-nodes"></datalist>
+                <datalist id="npc-dl-items"></datalist>
+                <datalist id="npc-dl-enemies"></datalist>
+                <datalist id="npc-dl-scenes"></datalist>
+
+                <div class="ed-form-actions">
+                    <button type="button" class="ed-btn primary" id="npc-save">保存</button>
+                    <button type="button" class="ed-btn danger hidden" id="npc-delete">删除</button>
+                    <button type="button" class="ed-btn" id="npc-cancel">取消</button>
                 </div>
             </form>
         </section>

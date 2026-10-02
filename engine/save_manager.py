@@ -32,6 +32,7 @@ class SaveManager:
         "current_dialogue": None,
         "current_battle": None,
         "killed_enemies": [],
+        "flags": {},
         "game_time": 0,
         "player_hp": 50,
         "player_max_hp": 50,

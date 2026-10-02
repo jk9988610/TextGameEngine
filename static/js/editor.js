@@ -3,8 +3,8 @@
    纯原生 JS，不依赖游戏页任何脚本；所有写操作走 /api/editor/* 并由后端校验。
    ========================================================================== */
 
-let DATA = { scenes: {}, items: {}, enemies: {}, initial_scene: '' };
-let tab = 'scenes';          // 当前页签：scenes | items | enemies
+let DATA = { scenes: {}, items: {}, enemies: {}, npcs: {}, initial_scene: '' };
+let tab = 'scenes';          // 当前页签：scenes | items | enemies | npcs
 let selectedId = null;       // 正在编辑的对象 id（新建态为 null）
 let isNew = false;
 
@@ -64,6 +64,11 @@ function bindStaticEvents() {
     $('enemy-save').addEventListener('click', saveEnemy);
     $('enemy-delete').addEventListener('click', deleteEnemy);
     $('enemy-cancel').addEventListener('click', showEmpty);
+    $('npc-save').addEventListener('click', saveNpc);
+    $('npc-delete').addEventListener('click', deleteNpc);
+    $('npc-cancel').addEventListener('click', showEmpty);
+    $('npc-add-rule').addEventListener('click', () => addRuleRow(null));
+    $('npc-add-node').addEventListener('click', () => addNodeCard('', { text: '', choices: [] }));
 }
 
 function switchTab(next) {
@@ -99,6 +104,7 @@ function showEmpty() {
     $('form-scene').classList.add('hidden');
     $('form-item').classList.add('hidden');
     $('form-enemy').classList.add('hidden');
+    $('form-npc').classList.add('hidden');
     renderList();
 }
 
@@ -111,6 +117,7 @@ function onNew() {
         $('form-scene').classList.remove('hidden');
         $('form-item').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
         $('scene-form-title').textContent = '新建地点';
         $('scene-id').value = '';
         $('scene-id').disabled = false;
@@ -124,6 +131,7 @@ function onNew() {
         $('form-enemy').classList.remove('hidden');
         $('form-scene').classList.add('hidden');
         $('form-item').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
         $('enemy-form-title').textContent = '新建敌人';
         $('enemy-id').value = '';
         $('enemy-id').disabled = false;
@@ -135,9 +143,16 @@ function onNew() {
         $('enemy-gold').value = 0;
         renderEnemyRewards([]);
         $('enemy-delete').classList.add('hidden');
+    } else if (tab === 'npcs') {
+        $('form-npc').classList.remove('hidden');
+        $('form-scene').classList.add('hidden');
+        $('form-enemy').classList.add('hidden');
+        renderNpcForm(null);
     } else {
         $('form-item').classList.remove('hidden');
         $('form-scene').classList.add('hidden');
+        $('form-enemy').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
         $('item-form-title').textContent = '新建物品';
         $('item-id').value = '';
         $('item-id').disabled = false;
@@ -165,6 +180,8 @@ function showForm(kind, id) {
         const s = DATA.scenes[id];
         if (!s) return;
         $('form-item').classList.add('hidden');
+        $('form-enemy').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
         $('form-scene').classList.remove('hidden');
         $('scene-form-title').textContent = '编辑地点';
         $('scene-id').value = s.id;
@@ -184,6 +201,7 @@ function showForm(kind, id) {
         if (!em) return;
         $('form-scene').classList.add('hidden');
         $('form-item').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
         $('form-enemy').classList.remove('hidden');
         $('enemy-form-title').textContent = '编辑敌人';
         $('enemy-id').value = em.id;
@@ -196,11 +214,20 @@ function showForm(kind, id) {
         $('enemy-gold').value = em.reward_gold != null ? em.reward_gold : 0;
         renderEnemyRewards(em.reward_items || []);
         $('enemy-delete').classList.remove('hidden');
+    } else if (kind === 'npcs') {
+        const npc = DATA.npcs[id];
+        if (!npc) return;
+        $('form-scene').classList.add('hidden');
+        $('form-enemy').classList.add('hidden');
+        $('form-item').classList.add('hidden');
+        $('form-npc').classList.remove('hidden');
+        renderNpcForm(npc);
     } else {
         const it = DATA.items[id];
         if (!it) return;
         $('form-scene').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
         $('form-item').classList.remove('hidden');
         $('item-form-title').textContent = '编辑物品';
         $('item-id').value = it.id;
@@ -437,6 +464,327 @@ async function deleteEnemy() {
     if (!em) return;
     if (!confirm(`确认删除敌人【${em.name || selectedId}】？该操作不可撤销（可在 enemies.json.bak 找回）。`)) return;
     const res = await fetch('/api/editor/enemy/' + encodeURIComponent(selectedId), { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) { toast(data.message, 'error'); return; }
+    showEmpty();
+    await loadData();
+    toast(data.message, 'success');
+}
+
+// ---------- NPC：属性 / 条件问候 / 对话节点树编辑（列表式） ----------
+const COND_OPTIONS = [
+    { v: '', label: '无条件' },
+    { v: 'flag', label: '需要标志' },
+    { v: 'has_item', label: '持有物品' },
+    { v: 'enemy_killed', label: '已击败敌人' },
+    { v: 'gold_gte', label: '金币不少于' },
+];
+const EFFECT_OPTIONS = [
+    { v: '', label: '（无效果）' },
+    { v: 'set_flag', label: '设置标志' },
+    { v: 'give_item', label: '给予物品' },
+    { v: 'remove_item', label: '收回物品' },
+    { v: 'heal', label: '治疗生命' },
+    { v: 'max_hp', label: '增加生命上限' },
+    { v: 'gold', label: '增加金币' },
+    { v: 'teleport', label: '传送到' },
+    { v: 'start_combat', label: '开始战斗' },
+];
+// 各类型参数输入框的形态：list 为 datalist id，ph 为占位提示
+const COND_PARAM_CFG = {
+    flag: { list: '', type: 'text', ph: '标志名，如 quest_done' },
+    has_item: { list: 'npc-dl-items', type: 'text', ph: '物品 ID' },
+    enemy_killed: { list: 'npc-dl-enemies', type: 'text', ph: '敌人 ID' },
+    gold_gte: { list: '', type: 'number', ph: '金币数量' },
+};
+const EFFECT_PARAM_CFG = {
+    set_flag: { list: '', type: 'text', ph: '标志名，如 quest_done' },
+    give_item: { list: 'npc-dl-items', type: 'text', ph: '物品 ID' },
+    remove_item: { list: 'npc-dl-items', type: 'text', ph: '物品 ID' },
+    heal: { list: '', type: 'number', ph: '回血量' },
+    max_hp: { list: '', type: 'number', ph: '增加的上限值' },
+    gold: { list: '', type: 'number', ph: '金币数量' },
+    teleport: { list: 'npc-dl-scenes', type: 'text', ph: '地点 ID' },
+    start_combat: { list: 'npc-dl-enemies', type: 'text', ph: '敌人 ID' },
+};
+
+function ce(tag, cls, text) {
+    const x = document.createElement(tag);
+    if (cls) x.className = cls;
+    if (text != null) x.textContent = text;
+    return x;
+}
+
+function optionsHtml(list, selected) {
+    return list.map(o =>
+        `<option value="${o.v}"${o.v === selected ? ' selected' : ''}>${o.label}</option>`
+    ).join('');
+}
+
+function condTypeOf(cond) {
+    if (!cond) return '';
+    return ['flag', 'has_item', 'enemy_killed', 'gold_gte'].find(k => k in cond) || '';
+}
+
+function configureParamInput(inp, cfg) {
+    if (!cfg) { inp.classList.add('hidden'); inp.value = ''; return; }
+    inp.classList.remove('hidden');
+    inp.type = cfg.type;
+    inp.placeholder = cfg.ph;
+    if (cfg.list) inp.setAttribute('list', cfg.list);
+    else inp.removeAttribute('list');
+}
+
+function fillRefDatalists() {
+    const fill = (dlId, coll) => {
+        const dl = $(dlId);
+        dl.innerHTML = '';
+        for (const id of sortedKeys(coll)) {
+            const o = document.createElement('option');
+            o.value = id;
+            o.textContent = coll[id].name || id;
+            dl.appendChild(o);
+        }
+    };
+    fill('npc-dl-items', DATA.items);
+    fill('npc-dl-enemies', DATA.enemies);
+    fill('npc-dl-scenes', DATA.scenes);
+}
+
+function refreshNodeDatalist() {
+    const dl = $('npc-dl-nodes');
+    dl.innerHTML = '';
+    document.querySelectorAll('.nnode-id').forEach(inp => {
+        const v = inp.value.trim();
+        if (v) {
+            const o = document.createElement('option');
+            o.value = v;
+            dl.appendChild(o);
+        }
+    });
+}
+
+function renderNpcForm(npc) {
+    $('npc-form-title').textContent = npc ? '编辑 NPC' : '新建 NPC';
+    $('npc-id').value = npc ? npc.id : '';
+    $('npc-id').disabled = !!npc;
+    $('npc-name').value = npc ? npc.name : '';
+
+    const sceneSel = $('npc-scene');
+    sceneSel.innerHTML = '';
+    for (const sid of sortedKeys(DATA.scenes)) {
+        sceneSel.appendChild(ce('option', null, `${DATA.scenes[sid].name || sid}（${sid}）`)).value = sid;
+    }
+    sceneSel.value = npc ? (npc.scene_id || '') : (sortedKeys(DATA.scenes)[0] || '');
+    $('npc-greeting').value = npc ? (npc.greeting || 'greet') : 'greet';
+
+    fillRefDatalists();
+
+    const rulesBox = $('npc-rules');
+    rulesBox.innerHTML = '';
+    (npc && npc.greeting_rules || []).forEach(r => addRuleRow(r));
+
+    const nodesBox = $('npc-nodes');
+    nodesBox.innerHTML = '';
+    if (npc) {
+        Object.entries(npc.nodes || {}).forEach(([nid, node]) => addNodeCard(nid, node));
+    } else {
+        addNodeCard('greet', { text: '', choices: [] });
+    }
+    refreshNodeDatalist();
+    $('npc-delete').classList.toggle('hidden', !npc);
+}
+
+function addRuleRow(rule) {
+    const cond = rule ? rule.if : null;
+    const t = condTypeOf(cond);
+    const row = ce('div', 'npc-rule-row');
+    const typeSel = ce('select', 'nr-cond-type');
+    typeSel.innerHTML = optionsHtml(COND_OPTIONS, t);
+    const param = ce('input', 'nr-cond-param');
+    configureParamInput(param, COND_PARAM_CFG[t]);
+    param.value = cond && t ? (t === 'gold_gte' ? cond[t] : cond[t]) : '';
+    typeSel.addEventListener('change', () => {
+        configureParamInput(param, COND_PARAM_CFG[typeSel.value]);
+    });
+    const nodeInp = ce('input', 'nr-node');
+    nodeInp.setAttribute('list', 'npc-dl-nodes');
+    nodeInp.placeholder = '起始节点 ID';
+    nodeInp.value = rule ? rule.node || '' : '';
+    const del = ce('button', 'ed-btn mini', '删除');
+    del.type = 'button';
+    del.addEventListener('click', () => row.remove());
+    row.append('条件', typeSel, param, '→ 起始节点', nodeInp, del);
+    $('npc-rules').appendChild(row);
+}
+
+function addNodeCard(nodeId, node) {
+    const card = ce('div', 'npc-card');
+
+    const head = ce('div', 'npc-card-head');
+    const idInp = ce('input', 'nnode-id');
+    idInp.value = nodeId;
+    idInp.placeholder = '节点 ID（如 greet）';
+    idInp.addEventListener('input', refreshNodeDatalist);
+    const delNode = ce('button', 'ed-btn mini danger', '删除节点');
+    delNode.type = 'button';
+    delNode.addEventListener('click', () => { card.remove(); refreshNodeDatalist(); });
+    head.append('节点', idInp, delNode);
+
+    const ta = ce('textarea', 'nnode-text');
+    ta.rows = 2;
+    ta.placeholder = 'NPC 说的话（玩家进入此节点时显示）';
+    ta.value = node.text || '';
+
+    const choicesBox = ce('div', 'nnode-choices');
+    (node.choices || []).forEach(ch => addChoiceRow(choicesBox, ch));
+    const addChBtn = ce('button', 'ed-btn mini', '+ 添加选项');
+    addChBtn.type = 'button';
+    addChBtn.addEventListener('click', () => addChoiceRow(choicesBox, null));
+
+    card.append(head, ta, choicesBox, addChBtn);
+    $('npc-nodes').appendChild(card);
+    refreshNodeDatalist();
+}
+
+function addChoiceRow(box, choice) {
+    const ch = choice || {};
+    const row = ce('div', 'npc-choice');
+
+    const line1 = ce('div', 'npc-choice-line');
+    const textInp = ce('input', 'nc-text');
+    textInp.placeholder = '选项文本（玩家点的那句话）';
+    textInp.value = ch.text || '';
+    const delCh = ce('button', 'ed-btn mini danger', '删选项');
+    delCh.type = 'button';
+    delCh.addEventListener('click', () => row.remove());
+    line1.append(textInp, delCh);
+
+    const line2 = ce('div', 'npc-choice-line');
+    const nextInp = ce('input', 'nc-next');
+    nextInp.setAttribute('list', 'npc-dl-nodes');
+    nextInp.placeholder = '下一节点（留空 = 结束对话）';
+    nextInp.value = ch.next || '';
+    const condSel = ce('select', 'nc-cond-type');
+    const t = condTypeOf(ch.if);
+    condSel.innerHTML = optionsHtml(COND_OPTIONS, t);
+    const condParam = ce('input', 'nc-cond-param');
+    configureParamInput(condParam, COND_PARAM_CFG[t]);
+    condParam.value = ch.if && t ? ch.if[t] : '';
+    condSel.addEventListener('change', () => {
+        configureParamInput(condParam, COND_PARAM_CFG[condSel.value]);
+    });
+    line2.append('下一节点', nextInp, '显示条件', condSel, condParam);
+
+    const effectsBox = ce('div', 'nc-effects');
+    (ch.effects || []).forEach(eff => addEffectRow(effectsBox, eff));
+    const addEffBtn = ce('button', 'ed-btn mini', '+ 添加效果');
+    addEffBtn.type = 'button';
+    addEffBtn.addEventListener('click', () => addEffectRow(effectsBox, null));
+
+    row.append(line1, line2, effectsBox, addEffBtn);
+    box.appendChild(row);
+}
+
+function addEffectRow(box, effect) {
+    const eff = effect || {};
+    const row = ce('div', 'npc-effect-row');
+    const typeSel = ce('select', 'ne-type');
+    typeSel.innerHTML = optionsHtml(EFFECT_OPTIONS, eff.type || '');
+    const param = ce('input', 'ne-param');
+    configureParamInput(param, EFFECT_PARAM_CFG[eff.type]);
+    param.value = eff ? (eff.item || eff.flag || eff.scene || eff.enemy ||
+        (eff.amount != null ? eff.amount : '')) : '';
+    typeSel.addEventListener('change', () => {
+        configureParamInput(param, EFFECT_PARAM_CFG[typeSel.value]);
+    });
+    const del = ce('button', 'ed-btn mini danger', '删');
+    del.type = 'button';
+    del.addEventListener('click', () => row.remove());
+    row.append(typeSel, param, del);
+    box.appendChild(row);
+}
+
+function buildCond(t, raw) {
+    if (t === 'gold_gte') return { gold_gte: parseInt(raw, 10) };
+    return { [t]: raw };
+}
+
+function buildEffect(t, raw) {
+    if (['heal', 'max_hp', 'gold'].includes(t)) return { type: t, amount: parseInt(raw, 10) };
+    if (t === 'set_flag') return { type: t, flag: raw };
+    if (t === 'give_item' || t === 'remove_item') return { type: t, item: raw };
+    if (t === 'teleport') return { type: t, scene: raw };
+    if (t === 'start_combat') return { type: t, enemy: raw };
+    return { type: t };
+}
+
+function collectNpcPayload() {
+    const greeting_rules = [];
+    document.querySelectorAll('#npc-rules .npc-rule-row').forEach(row => {
+        const node = row.querySelector('.nr-node').value.trim();
+        if (!node) return;  // 没填目标节点的行视为未配置
+        const rule = { node };
+        const t = row.querySelector('.nr-cond-type').value;
+        const p = row.querySelector('.nr-cond-param').value.trim();
+        if (t) rule.if = buildCond(t, p);
+        greeting_rules.push(rule);
+    });
+
+    const nodes = {};
+    document.querySelectorAll('#npc-nodes .npc-card').forEach(card => {
+        const nid = card.querySelector('.nnode-id').value.trim();
+        if (!nid) return;
+        const choices = [];
+        card.querySelectorAll('.nnode-choices .npc-choice').forEach(row => {
+            const choice = { text: row.querySelector('.nc-text').value };
+            const next = row.querySelector('.nc-next').value.trim();
+            if (next) choice.next = next;
+            const t = row.querySelector('.nc-cond-type').value;
+            const p = row.querySelector('.nc-cond-param').value.trim();
+            if (t) choice.if = buildCond(t, p);
+            const effects = [];
+            row.querySelectorAll('.nc-effects .npc-effect-row').forEach(er => {
+                const et = er.querySelector('.ne-type').value;
+                if (et) effects.push(buildEffect(et, er.querySelector('.ne-param').value.trim()));
+            });
+            if (effects.length) choice.effects = effects;
+            choices.push(choice);
+        });
+        nodes[nid] = { text: card.querySelector('.nnode-text').value, choices };
+    });
+
+    return {
+        id: $('npc-id').value.trim(),
+        name: $('npc-name').value,
+        scene_id: $('npc-scene').value,
+        greeting: $('npc-greeting').value.trim() || 'greet',
+        greeting_rules,
+        nodes,
+    };
+}
+
+async function saveNpc() {
+    const payload = collectNpcPayload();
+    const res = await fetch('/api/editor/npc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.success) { toast(data.message, 'error'); return; }
+    selectedId = data.id;
+    isNew = false;
+    await loadData();
+    toast([data.message, ...(data.warnings || [])].join('\n'),
+        (data.warnings || []).length ? 'warning' : 'success');
+}
+
+async function deleteNpc() {
+    const npc = DATA.npcs[selectedId];
+    if (!npc) return;
+    if (!confirm(`确认删除 NPC【${npc.name || selectedId}】？该操作不可撤销（可在 npc_dialogues.json.bak 找回）。`)) return;
+    const res = await fetch('/api/editor/npc/' + encodeURIComponent(selectedId), { method: 'DELETE' });
     const data = await res.json();
     if (!data.success) { toast(data.message, 'error'); return; }
     showEmpty();

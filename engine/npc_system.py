@@ -6,6 +6,8 @@ NPC 对话系统（引擎核心模块）
 """
 from typing import Dict, Any, List, Optional
 
+from .effects import condition_matches
+
 
 class NPCSystem:
     """管理 NPC 对话树 —— 订阅事件自动触发，按选项推进"""
@@ -50,15 +52,18 @@ class NPCSystem:
         return {"success": True, "message": "对话已开始"}
 
     def _pick_greeting(self, npc: Dict) -> str:
-        """根据 game_state 世界状态选对话起点"""
-        greetings = npc.get("greetings", {})
-        killed = self._state.get("killed_enemies", [])
-        inventory = self._state.get("player_inventory", [])
+        """按 greeting_rules 的顺序取第一个满足条件的起始节点，都不满足用 greeting。
 
-        if "after_kill" in greetings and "cave_goblin" in killed:
-            return greetings["after_kill"]
-        if "has_key" in greetings and "rusty_key" in inventory:
-            return greetings["has_key"]
+        规则格式（全部游戏内容可配，引擎不写死任何 NPC/物品/敌人）：
+          {"if": {"flag": "x"} | {"has_item": "id"} |
+                  {"enemy_killed": "id"} | {"gold_gte": n},
+           "node": "node_id"}
+        """
+        for rule in npc.get("greeting_rules", []) or []:
+            cond = rule.get("if")
+            node_id = rule.get("node")
+            if node_id and condition_matches(self._state, cond):
+                return node_id
         return npc.get("greeting", "greet")
 
     def list_npcs_in_scene(self, scene_id: str) -> list:
@@ -90,6 +95,14 @@ class NPCSystem:
             return npc.get("nodes", {}).get(node_id)
         return None
 
+    # ---------- 内部：选项条件 ----------
+    def _choice_visible(self, choice: Dict) -> bool:
+        """选项是否对当前玩家可见：requires_item（旧格式兼容）+ 通用 if 条件都要满足"""
+        required = choice.get("requires_item")
+        if required and required not in self._state.get("player_inventory", []):
+            return False
+        return condition_matches(self._state, choice.get("if"))
+
     # ---------- 公开接口（给路由层调用） ----------
     def get_dialogue_for_api(self) -> Dict[str, Any]:
         """获取当前对话的可渲染数据（给前端用）"""
@@ -103,17 +116,12 @@ class NPCSystem:
             self.end_dialogue()
             return {"active": False}
 
-        # 【过滤 requires_item 条件选项】玩家没有对应物品的选项不显示
-        player_inv = self._state.get("player_inventory", [])
-        filtered_choices = []
-        for choice in node.get("choices", []):
-            required = choice.get("requires_item")
-            if required and required not in player_inv:
-                continue  # 条件不满足，跳过
-            filtered_choices.append({
-                "text": choice["text"],
-                "has_next": bool(choice.get("next")),  # 有 next 就能继续推进
-            })
+        # 条件不满足的选项不发给前端（索引按可见选项重新排）
+        filtered_choices = [
+            {"text": choice["text"], "has_next": bool(choice.get("next"))}
+            for choice in node.get("choices", [])
+            if self._choice_visible(choice)
+        ]
 
         return {
             "active": True,
@@ -125,7 +133,7 @@ class NPCSystem:
         }
 
     def select_choice(self, choice_index: int) -> Dict[str, Any]:
-        """玩家点击某个选项 → 推进对话树"""
+        """玩家点击某个选项 → 推进对话树；效果不在本模块执行（跨系统动作交路由层编排）"""
         response = {"success": False, "message": ""}
         dialogue = self._state.get("current_dialogue")
         if not dialogue:
@@ -137,9 +145,7 @@ class NPCSystem:
             response["message"] = "对话节点不存在"
             return response
 
-        player_inv = self._state.get("player_inventory", [])
-        valid_choices = [c for c in node.get("choices", [])
-                         if not c.get("requires_item") or c["requires_item"] in player_inv]
+        valid_choices = [c for c in node.get("choices", []) if self._choice_visible(c)]
 
         if choice_index < 0 or choice_index >= len(valid_choices):
             response["message"] = "选项索引无效"
@@ -160,6 +166,9 @@ class NPCSystem:
             response["success"] = True
             response["message"] = "对话已结束"
 
+        # 把选项挂的效果原样交给路由层执行（本模块不直接调用其他子系统）
+        if chosen.get("effects"):
+            response["effects"] = chosen["effects"]
         return response
 
     def end_dialogue(self) -> None:

@@ -52,6 +52,7 @@ class ConsoleHandler:
             "add_item": self._cmd_add_item,
             "drop_item": self._cmd_drop_item,
             "buy": self._cmd_buy,
+            "set_flag": self._cmd_set_flag,
             "save": self._cmd_save,
             "load": self._cmd_load,
             "reset": self._cmd_reset,
@@ -95,6 +96,25 @@ class ConsoleHandler:
         result = self._shop.buy_item(args[0])
         return result["message"]
 
+    def _cmd_set_flag(self, args: list) -> str:
+        """设置剧情标志：set_flag <名> [值]（值可写 true/false/数字，默认 true）"""
+        if not args:
+            return "错误：用法：set_flag <标志名> [值]"
+        name = args[0]
+        raw = args[1] if len(args) > 1 else "true"
+        low = raw.lower()
+        if low in ("true", "1", "yes", "on"):
+            value = True
+        elif low in ("false", "0", "no", "off"):
+            value = False
+        else:
+            try:
+                value = int(raw)
+            except ValueError:
+                value = raw
+        self._state.setdefault("flags", {})[name] = value
+        return f"标志 {name} = {value}"
+
     def _cmd_save(self, args: list) -> str:
         snapshot = {
             "current_scene": self._state["current_scene"],
@@ -132,6 +152,7 @@ class ConsoleHandler:
         self._state["current_battle"] = None
         self._state["current_dialogue"] = None
         self._state["killed_enemies"] = []      # 敌人全复活
+        self._state["flags"] = {}               # 剧情标志全清
         self._state["game_time"] = 0            # 时间归零
         self._state["player_gold"] = int(cfg.get("initial_gold", 0))  # 金币归零
         player_cfg = cfg.get("player", {})
@@ -152,6 +173,7 @@ class ConsoleHandler:
             "  add_item <物品ID>  加物品到背包（货币类物品折算金币）\n"
             "  drop_item <物品ID> 丢物品到当前场景\n"
             "  buy [物品ID]     查看/购买当前场景商店的货物\n"
+            "  set_flag <名> [值] 设置剧情标志（默认 true，调试对话条件用）\n"
             "  save              保存快照\n"
             "  load              读取快照\n"
             "  reset             重置游戏\n"

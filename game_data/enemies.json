@@ -8,7 +8,8 @@
     "description": "一只皮糙肉厚的绿皮小怪物，正举着木棒虎视眈眈地盯着你。",
     "reward_items": [
       "gold_coin"
-    ]
+    ],
+    "reward_gold": 0
   },
   "forest_wolf": {
     "id": "forest_wolf",

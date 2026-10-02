@@ -17,20 +17,13 @@ const closeSaveBtn = document.getElementById('close-save-btn');
 let _currentUser = null;  // {user_id, username} 或 null
 
 function chooseMode(mode, silent = false) {
-    /** 选模式：offline 弹启动面板；online 登录了就直接进，没登录弹登录面板 */
+    /** 选模式：offline 弹启动面板；online 已从模式选择页屏蔽（2026-10-03 起） */
     if (mode === 'offline') {
         showOfflineStart();
     } else if (mode === 'online') {
-        if (_currentUser) {
-            // 已登录 —— 跳过登录面板直接进
-            enterOnlineGame();
-        } else {
-            // 没登录 —— 弹登录面板
-            modeOverlay.classList.add('hidden');
-            switchAuthTab('login');
-            document.getElementById('auth-message').textContent = '';
-            authOverlay.classList.add('active');
-        }
+        // 多人模式未规划前，任何残留入口都不允许进入在线流程
+        console.warn('在线模式（多人）暂未开放，入口已屏蔽。放开方式见 index.html 注释与 README.md');
+        return;
     }
 }
 

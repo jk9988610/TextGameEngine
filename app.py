@@ -157,6 +157,7 @@ def get_state():
         "scene": e["scene_manager"].get_current_scene(),
         "player_inventory": e["item_system"].get_player_inventory(),
         "player_gold": e["game_state"].get("player_gold", 0),
+        "flags": e["game_state"].get("flags", {}),
         "game_time": e["game_state"].get("game_time", 0),
         "npcs_here": e["npc_system"].list_npcs_in_scene(scene_id),      # 🆕 场景里的 NPC
         "enemies_here": e["combat_system"].list_enemies_in_scene(scene_id),  # 🆕 场景里的敌人
@@ -241,7 +242,17 @@ def handle_dialogue():
     if not e:
         return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
-    return jsonify(e["npc_system"].select_choice(data.get("choice_index", 0)))
+    result = e["npc_system"].select_choice(data.get("choice_index", 0))
+
+    # 执行选项挂的效果（给物品/置标志/回血/传送/开战等跨系统动作统一在此编排）
+    effects = result.pop("effects", None)
+    if result.get("success") and effects:
+        eff_res = e["effects"].apply(effects)
+        result["effect_messages"] = eff_res.get("messages", [])
+        # 开战/传送类效果会让对话无法继续：确保对话已结束
+        if eff_res.get("combat_started"):
+            e["npc_system"].end_dialogue()
+    return jsonify(result)
 
 
 @app.route('/api/combat', methods=['GET'])
@@ -508,6 +519,7 @@ def editor_get_data():
         "scenes": GAME_DATA["scenes"],
         "items": GAME_DATA["items"],
         "enemies": GAME_DATA["enemies"],
+        "npcs": GAME_DATA["npcs"],
         "initial_scene": (GAME_DATA.get("config") or {}).get("initial_scene", ""),
     })
 
@@ -586,7 +598,32 @@ def editor_delete_enemy(enemy_id):
     result = EDITOR.delete_enemy(
         GAME_DATA["scenes"], GAME_DATA["enemies"], enemy_id,
         live_battle_ids=SM.live_battle_enemies())
-    return jsonify(result)
+    return result
+
+
+@app.route('/api/editor/npc', methods=['POST'])
+def editor_upsert_npc():
+    """新建/更新一个 NPC（属性 + 问候规则 + 对话节点树/条件/效果，按 id 区分）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    payload = request.json or {}
+    result = EDITOR.upsert_npc(
+        GAME_DATA["npcs"], GAME_DATA["scenes"], GAME_DATA["items"],
+        GAME_DATA["enemies"], payload)
+    return result
+
+
+@app.route('/api/editor/npc/<npc_id>', methods=['DELETE'])
+def editor_delete_npc(npc_id):
+    """删除一个 NPC（有玩家正在与其对话时拒绝）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    result = EDITOR.delete_npc(
+        GAME_DATA["npcs"], npc_id,
+        live_dialogue_ids=SM.live_dialogue_npcs())
+    return result
 
 
 # ============================================================
