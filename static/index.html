@@ -375,6 +375,212 @@
             font-family: inherit;
         }
         #console-send:hover { background: #d63a54; }
+        /* ========== 模式选择覆盖层 ========== */
+        #mode-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10,10,14,0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: fadeIn 0.4s ease;
+        }
+        #mode-overlay.hidden { display: none; }
+        #mode-overlay h2 {
+            font-size: 2.2rem;
+            color: #e94560;
+            margin-bottom: 0.5rem;
+            letter-spacing: 3px;
+        }
+        #mode-overlay .mode-subtitle {
+            color: #94a3b8;
+            margin-bottom: 2.5rem;
+        }
+        .mode-buttons {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .mode-card {
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 12px;
+            padding: 2rem 2.5rem;
+            width: 280px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+        .mode-card:hover {
+            border-color: #e94560;
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(233,69,96,0.3);
+        }
+        .mode-card .mode-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .mode-card .mode-title { font-size: 1.3rem; color: #e0e0e0; font-weight: bold; margin-bottom: 0.8rem; }
+        .mode-card .mode-desc { font-size: 0.85rem; color: #94a3b8; line-height: 1.6; }
+        .mode-card.online { border-color: #0f3460; }
+        .mode-card.online:hover { border-color: #4ade80; box-shadow: 0 8px 25px rgba(74,222,128,0.3); }
+
+        /* ========== 登录/注册覆盖层 ========== */
+        #auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10,10,14,0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9998;
+            animation: fadeIn 0.3s ease;
+        }
+        #auth-overlay.active { display: flex; }
+        #auth-overlay .auth-card {
+            background: #16213e;
+            border: 2px solid #4ade80;
+            border-radius: 12px;
+            padding: 2rem;
+            width: 320px;
+            animation: fadeIn 0.3s ease;
+        }
+        #auth-overlay h2 { color: #4ade80; margin-bottom: 1.5rem; text-align: center; }
+        .auth-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .auth-tab {
+            flex: 1;
+            padding: 0.5rem;
+            background: #0f3460;
+            border: 1px solid #0f3460;
+            color: #94a3b8;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+        .auth-tab.active {
+            background: #4ade80;
+            color: #1a1a2e;
+            border-color: #4ade80;
+            font-weight: bold;
+        }
+        .auth-form-group { margin-bottom: 0.8rem; }
+        .auth-form-group label { display: block; color: #94a3b8; font-size: 0.8rem; margin-bottom: 0.3rem; }
+        .auth-form-group input {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #0f3460;
+            color: #e0e0e0;
+            padding: 0.5rem 0.6rem;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .auth-form-group input:focus { border-color: #4ade80; }
+        .auth-submit {
+            width: 100%;
+            background: #4ade80;
+            color: #1a1a2e;
+            border: none;
+            padding: 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 1rem;
+            margin-top: 0.5rem;
+            transition: all 0.2s;
+        }
+        .auth-submit:hover { background: #22c55e; transform: translateY(-1px); }
+        .auth-message {
+            margin-top: 0.8rem;
+            padding: 0.5rem;
+            background: #0f3460;
+            border-radius: 3px;
+            font-size: 0.85rem;
+            text-align: center;
+            min-height: 1.2rem;
+        }
+        .auth-message.success { color: #4ade80; }
+        .auth-message.error { color: #f87171; }
+        .auth-back-btn {
+            display: block;
+            margin-top: 1rem;
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .auth-back-btn:hover { color: #e94560; }
+
+        /* ========== 存档面板 ========== */
+        .save-panel {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            display: none;
+        }
+        .save-panel.active { display: block; animation: fadeIn 0.3s ease; }
+        .save-panel h3 {
+            color: #94a3b8;
+            font-size: 1rem;
+            margin-bottom: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .save-slot-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.6rem 0.8rem;
+            margin-bottom: 0.4rem;
+            background: #0f3460;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        .save-slot-info { color: #cbd5e1; }
+        .save-slot-info.slot-empty { color: #64748b; font-style: italic; }
+        .save-slot-info .slot-time { color: #64748b; font-size: 0.75rem; margin-left: 0.5rem; }
+        .save-slot-info.is-auto::before {
+            content: "🤖 ";
+            font-size: 0.75rem;
+        }
+        .save-slot-btns { display: flex; gap: 0.4rem; }
+        .save-slot-btns button {
+            background: #2d1f0f;
+            border: 1px solid #c9a227;
+            color: #c9a227;
+            padding: 0.2rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .save-slot-btns button:hover:not(:disabled) { background: #c9a227; color: #1a1a2e; }
+        .save-slot-btns button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .save-slot-btns .btn-load { border-color: #4ade80; color: #4ade80; }
+        .save-slot-btns .btn-load:hover:not(:disabled) { background: #4ade80; color: #1a1a2e; }
+        .save-slot-btns .btn-delete { border-color: #e94560; color: #e94560; }
+        .save-slot-btns .btn-delete:hover:not(:disabled) { background: #e94560; color: #fff; }
+        .save-header-btns { display: flex; gap: 0.5rem; }
+        .mode-badge {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 3px;
+            background: #0f3460;
+            border: 1px solid #e94560;
+            color: #e94560;
+        }
+        .mode-badge.online-mode { border-color: #4ade80; color: #4ade80; }
+
         /* 底部提示 */
         .footer-hint {
             text-align: center;
@@ -392,10 +598,87 @@
     </style>
 </head>
 <body>
+    <!-- 🆕 模式选择覆盖层（首次进入显示，选完隐藏） -->
+    <div id="mode-overlay">
+        <h2>⚔️ 文字游戏引擎</h2>
+        <p class="mode-subtitle">选择你的游玩方式</p>
+        <div class="mode-buttons">
+            <div class="mode-card" onclick="chooseMode('offline')">
+                <div class="mode-icon">💻</div>
+                <div class="mode-title">离线模式</div>
+                <div class="mode-desc">
+                    单机畅玩，无需登录<br>
+                    自动存档 + 多槽手动存档<br>
+                    存档存在本地 SQLite<br>
+                    适合个人体验 / GitHub clone
+                </div>
+            </div>
+            <div class="mode-card online" onclick="chooseMode('online')">
+                <div class="mode-icon">🌐</div>
+                <div class="mode-title">在线模式</div>
+                <div class="mode-desc">
+                    多人同场，需账号登录<br>
+                    服务器实时存档<br>
+                    其他玩家名字会出现在同场景<br>
+                    <span style="color:#e94560;font-size:0.75rem;">（暂未开放，敬请期待）</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🆕 登录/注册覆盖层（选在线模式后弹出，登录成功自动进入游戏） -->
+    <div id="auth-overlay">
+        <div class="auth-card">
+            <h2>🌐 在线模式登录</h2>
+            <div class="auth-tabs">
+                <button class="auth-tab active" onclick="switchAuthTab('login')">登录</button>
+                <button class="auth-tab" onclick="switchAuthTab('register')">注册</button>
+            </div>
+            <!-- 登录表单 -->
+            <div id="auth-form-login">
+                <div class="auth-form-group">
+                    <label>用户名</label>
+                    <input type="text" id="auth-login-username" placeholder="请输入用户名" autocomplete="username">
+                </div>
+                <div class="auth-form-group">
+                    <label>密码</label>
+                    <input type="password" id="auth-login-password" placeholder="请输入密码" autocomplete="current-password">
+                </div>
+                <button class="auth-submit" onclick="doLogin()">登录</button>
+            </div>
+            <!-- 注册表单 -->
+            <div id="auth-form-register" style="display:none;">
+                <div class="auth-form-group">
+                    <label>用户名（2-32字符）</label>
+                    <input type="text" id="auth-reg-username" placeholder="请输入用户名">
+                </div>
+                <div class="auth-form-group">
+                    <label>密码（至少4字符）</label>
+                    <input type="password" id="auth-reg-password" placeholder="请输入密码">
+                </div>
+                <div class="auth-form-group">
+                    <label>确认密码</label>
+                    <input type="password" id="auth-reg-password2" placeholder="请再次输入密码">
+                </div>
+                <button class="auth-submit" onclick="doRegister()">注册并登录</button>
+            </div>
+            <div id="auth-message" class="auth-message"></div>
+            <button class="auth-back-btn" onclick="backToModeSelect()">← 返回模式选择</button>
+        </div>
+    </div>
+
     <!-- 顶部标题栏 -->
     <header>
         <h1>⚔️ 文字游戏引擎 MVP</h1>
-        <p>点击操作即可游玩 | 按 <kbd style="background:#0f3460;padding:0.1rem 0.4rem;border-radius:3px;">~</kbd> 键打开开发者控制台</p>
+        <p>
+            点击操作即可游玩 |
+            按 <kbd style="background:#0f3460;padding:0.1rem 0.4rem;border-radius:3px;">~</kbd> 键打开开发者控制台
+            <span id="mode-badge" class="mode-badge" style="margin-left:1rem;"></span>
+            <span id="online-user-label" style="margin-left:0.5rem;display:none;color:#4ade80;font-size:0.8rem;"></span>
+            <button id="toggle-save-btn" class="action-btn" style="margin-left:1rem;padding:0.2rem 0.6rem;font-size:0.75rem;">💾 存档</button>
+            <button id="logout-btn" class="action-btn" style="padding:0.2rem 0.6rem;font-size:0.75rem;display:none;">🚪 退出</button>
+            <button id="change-mode-btn" class="action-btn" style="padding:0.2rem 0.6rem;font-size:0.75rem;">🔄 换模式</button>
+        </p>
     </header>
 
     <!-- 主游戏区 -->
@@ -423,6 +706,15 @@
 
             <!-- 操作消息提示 -->
             <div class="message" id="action-message">欢迎来到文字游戏引擎！点击上面的按钮开始探索吧～</div>
+        </div>
+
+        <!-- 🆕 存档面板（默认隐藏，点💾存档按钮展开） -->
+        <div class="save-panel" id="save-panel">
+            <h3>
+                📂 存档管理
+                <button id="close-save-btn" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;">✕</button>
+            </h3>
+            <div id="save-slots"></div>
         </div>
 
         <!-- 🆕 NPC 对话面板（默认隐藏，有对话才显示） -->
@@ -502,6 +794,25 @@
     <script>
         // 全局状态
         let consoleVisible = false;
+
+        // ---------- 🆕 localStorage client_id（存档隔离键，清 cookie 也不变） ----------
+        const CLIENT_ID_KEY = 'game_client_id';
+        let _clientId = localStorage.getItem(CLIENT_ID_KEY);
+        if (!_clientId) {
+            _clientId = (crypto.randomUUID ? crypto.randomUUID() :
+                Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+            localStorage.setItem(CLIENT_ID_KEY, _clientId);
+        }
+        // 劫持 fetch，自动给每个请求的 URL 加上 client_id（已有的不重复加）
+        const _origFetch = window.fetch;
+        window.fetch = function(url, opts) {
+            // 只改相对路径（以 / 开头）的 URL
+            if (typeof url === 'string' && url.startsWith('/')) {
+                const sep = url.includes('?') ? '&' : '?';
+                url = url + sep + 'client_id=' + _clientId;
+            }
+            return _origFetch.call(this, url, opts);
+        };
 
         // ---------- 控制台切换逻辑 ----------
         const devConsole = document.getElementById('dev-console');
@@ -789,9 +1100,306 @@
             fetchState();
         }
 
-        // ---------- 初始化 ----------
-        // 页面加载完成后，先拉一次游戏状态
-        document.addEventListener('DOMContentLoaded', () => fetchState());
+        // ---------- 🆕 模式选择 + 登录逻辑 ----------
+        const modeOverlay = document.getElementById('mode-overlay');
+        const authOverlay = document.getElementById('auth-overlay');
+        const modeBadge = document.getElementById('mode-badge');
+        const onlineUserLabel = document.getElementById('online-user-label');
+        const toggleSaveBtn = document.getElementById('toggle-save-btn');
+        const changeModeBtn = document.getElementById('change-mode-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const savePanel = document.getElementById('save-panel');
+        const closeSaveBtn = document.getElementById('close-save-btn');
+
+        // 全局：当前登录态
+        let _currentUser = null;  // {user_id, username} 或 null
+
+        // ---------- 启动检查：模式 + 登录态 ----------
+        (async function initApp() {
+            const savedMode = localStorage.getItem('game_mode');
+            if (savedMode === 'online') {
+                // 在线模式：先检查后端 session 里有没有 user_id
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (data.logged_in && data.user) {
+                    _currentUser = data.user;
+                    enterOnlineGame();  // 直接进游戏（session 还在）
+                } else {
+                    // session 过期了 —— 显示登录面板
+                    localStorage.removeItem('game_mode');
+                    modeOverlay.classList.remove('hidden');
+                }
+            } else if (savedMode === 'offline') {
+                enterOfflineGame();
+            }
+            // 否则：覆盖层保持显示，等玩家选
+        })();
+
+        function chooseMode(mode, silent = false) {
+            /** 选模式：offline 直接进；online 显示登录面板 */
+            if (mode === 'offline') {
+                localStorage.setItem('game_mode', 'offline');
+                enterOfflineGame();
+            } else if (mode === 'online') {
+                // 在线模式：显示登录/注册面板
+                switchAuthTab('login');
+                document.getElementById('auth-message').textContent = '';
+                authOverlay.classList.add('active');
+            }
+        }
+
+        function enterOfflineGame() {
+            /** 进入离线模式游戏（无登录） */
+            modeOverlay.classList.add('hidden');
+            authOverlay.classList.remove('active');
+            modeBadge.textContent = '💻 离线模式';
+            modeBadge.className = 'mode-badge';
+            onlineUserLabel.style.display = 'none';
+            logoutBtn.style.display = 'none';
+            toggleSaveBtn.style.display = '';
+            fetchState();
+        }
+
+        function enterOnlineGame() {
+            /** 进入在线模式游戏（已登录） */
+            modeOverlay.classList.add('hidden');
+            authOverlay.classList.remove('active');
+            localStorage.setItem('game_mode', 'online');
+            modeBadge.textContent = '🌐 在线模式';
+            modeBadge.className = 'mode-badge online-mode';
+            if (_currentUser) {
+                onlineUserLabel.textContent = '👤 ' + _currentUser.username;
+                onlineUserLabel.style.display = '';
+            }
+            logoutBtn.style.display = '';
+            toggleSaveBtn.style.display = '';
+            fetchState();
+        }
+
+        // ---------- 登录/注册面板交互 ----------
+        function switchAuthTab(tab) {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            if (tab === 'login') {
+                document.querySelectorAll('.auth-tab')[0].classList.add('active');
+                document.getElementById('auth-form-login').style.display = '';
+                document.getElementById('auth-form-register').style.display = 'none';
+            } else {
+                document.querySelectorAll('.auth-tab')[1].classList.add('active');
+                document.getElementById('auth-form-login').style.display = 'none';
+                document.getElementById('auth-form-register').style.display = '';
+            }
+            document.getElementById('auth-message').textContent = '';
+            document.getElementById('auth-message').className = 'auth-message';
+        }
+
+        function setAuthMsg(text, isError = false) {
+            const msgDiv = document.getElementById('auth-message');
+            msgDiv.textContent = text;
+            msgDiv.className = 'auth-message ' + (isError ? 'error' : 'success');
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('auth-login-username').value.trim();
+            const password = document.getElementById('auth-login-password').value;
+            if (!username || !password) {
+                setAuthMsg('❌ 请输入用户名和密码', true);
+                return;
+            }
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    _currentUser = data.user;
+                    setAuthMsg(data.message);
+                    setTimeout(() => enterOnlineGame(), 500);
+                } else {
+                    setAuthMsg(data.message, true);
+                }
+            } catch (e) {
+                setAuthMsg('❌ 网络错误，请稍后再试', true);
+            }
+        }
+
+        async function doRegister() {
+            const username = document.getElementById('auth-reg-username').value.trim();
+            const password = document.getElementById('auth-reg-password').value;
+            const password2 = document.getElementById('auth-reg-password2').value;
+            if (!username || !password) {
+                setAuthMsg('❌ 请填写完整信息', true);
+                return;
+            }
+            if (password !== password2) {
+                setAuthMsg('❌ 两次输入的密码不一致', true);
+                return;
+            }
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    _currentUser = { user_id: data.user_id, username: data.username };
+                    setAuthMsg(data.message);
+                    setTimeout(() => enterOnlineGame(), 500);
+                } else {
+                    setAuthMsg(data.message, true);
+                }
+            } catch (e) {
+                setAuthMsg('❌ 网络错误，请稍后再试', true);
+            }
+        }
+
+        function backToModeSelect() {
+            authOverlay.classList.remove('active');
+            localStorage.removeItem('game_mode');
+            modeOverlay.classList.remove('hidden');
+        }
+
+        async function doLogout() {
+            if (!confirm('👋 确定退出登录吗？')) return;
+            await fetch('/api/auth/logout', { method: 'POST' });
+            _currentUser = null;
+            localStorage.removeItem('game_mode');
+            // 退出后回到模式选择
+            onlineUserLabel.style.display = 'none';
+            logoutBtn.style.display = 'none';
+            modeOverlay.classList.remove('hidden');
+        }
+
+        logoutBtn.addEventListener('click', doLogout);
+
+        // 重新选模式 → 清 localStorage → 刷新页面
+        changeModeBtn.addEventListener('click', () => {
+            localStorage.removeItem('game_mode');
+            location.reload();
+        });
+
+        // ---------- 🆕 存档面板逻辑 ----------
+        toggleSaveBtn.addEventListener('click', async () => {
+            savePanel.classList.toggle('active');
+            if (savePanel.classList.contains('active')) await refreshSaveList();
+        });
+        closeSaveBtn.addEventListener('click', () => savePanel.classList.remove('active'));
+
+        async function refreshSaveList() {
+            /** 从后端拉取存档列表并渲染 */
+            const res = await fetch('/api/saves');
+            const data = await res.json();
+            const slotsDiv = document.getElementById('save-slots');
+            slotsDiv.innerHTML = '';
+
+            // 先渲染 5 个手动槽位
+            for (let i = 1; i <= 5; i++) {
+                const slotName = `slot_${i}`;
+                const saved = data.slots.find(s => s.slot_name === slotName && !s.is_auto);
+                slotsDiv.appendChild(buildSlotRow(slotName, saved));
+            }
+            // 再渲染 auto 槽位（如果有）
+            const autoSlot = data.slots.find(s => s.slot_name === 'auto');
+            if (autoSlot) slotsDiv.appendChild(buildSlotRow('auto', autoSlot));
+
+            if (data.slots.length === 0) {
+                slotsDiv.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:0.5rem;">没有存档 —— 进入场景后会自动创建 auto 存档</div>';
+            }
+        }
+
+        function buildSlotRow(slotName, savedSlot) {
+            /** 构建一个存档槽位的 DOM 行 */
+            const row = document.createElement('div');
+            row.className = 'save-slot-row';
+            row.style.borderLeft = savedSlot ? '3px solid #4ade80' : '3px solid #64748b';
+
+            const info = document.createElement('div');
+            if (savedSlot) {
+                info.className = 'save-slot-info' + (savedSlot.is_auto ? ' is-auto' : '');
+                const time = savedSlot.updated_at ? savedSlot.updated_at.split(' ')[1] : '';
+                info.innerHTML = `<strong>${slotName}</strong><span class="slot-time">⏱ ${savedSlot.updated_at}</span>`;
+            } else {
+                info.className = 'save-slot-info slot-empty';
+                info.innerHTML = `<strong>${slotName}</strong> — 空槽位`;
+            }
+
+            const btns = document.createElement('div');
+            btns.className = 'save-slot-btns';
+
+            // 手动存（对 slot_1~5 有效，auto 不让手动存）
+            if (slotName !== 'auto') {
+                const saveBtn = document.createElement('button');
+                saveBtn.textContent = '💾 存';
+                saveBtn.onclick = () => manualSave(slotName);
+                btns.appendChild(saveBtn);
+            }
+
+            // 读档
+            const loadBtn = document.createElement('button');
+            loadBtn.className = 'btn-load';
+            loadBtn.textContent = '📂 读';
+            loadBtn.disabled = !savedSlot;
+            loadBtn.onclick = () => loadSave(slotName);
+            btns.appendChild(loadBtn);
+
+            // 删除（auto 不让删，它是系统维护的）
+            if (slotName !== 'auto') {
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn-delete';
+                delBtn.textContent = '🗑️';
+                delBtn.disabled = !savedSlot;
+                delBtn.onclick = () => deleteSave(slotName);
+                btns.appendChild(delBtn);
+            }
+
+            row.appendChild(info);
+            row.appendChild(btns);
+            return row;
+        }
+
+        async function manualSave(slotName) {
+            /** 手动存档到指定槽位 */
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slot_name: slotName })
+            });
+            const data = await res.json();
+            document.getElementById('action-message').textContent =
+                data.success ? `💾 已保存到 ${slotName}（${data.created_at}）` : data.message;
+            if (data.success) refreshSaveList();
+        }
+
+        async function loadSave(slotName) {
+            /** 从指定槽位读档 */
+            if (!confirm(`📂 确认读取 ${slotName}？当前进度会被覆盖。`)) return;
+            const res = await fetch('/api/load', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slot_name: slotName })
+            });
+            const data = await res.json();
+            document.getElementById('action-message').textContent =
+                data.success ? `📂 ${data.message}` : data.message;
+            if (data.success) fetchState();  // 刷新场景/背包/对话/战斗面板
+        }
+
+        async function deleteSave(slotName) {
+            /** 删除一个槽位 */
+            if (!confirm(`🗑️ 确认删除 ${slotName} 的存档？此操作不可撤销。`)) return;
+            const res = await fetch('/api/save', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slot_name: slotName })
+            });
+            const data = await res.json();
+            document.getElementById('action-message').textContent = data.message;
+            refreshSaveList();
+        }
+
+        // 注：初始化由上面的 initApp() async IIFE 负责（检查登录态 → 选模式 → 进入游戏）
     </script>
 </body>
 </html>

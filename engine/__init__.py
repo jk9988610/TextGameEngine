@@ -9,6 +9,8 @@ from .console_handler import ConsoleHandler
 from .npc_system import NPCSystem
 from .combat_system import CombatSystem
 from .session_manager import SessionManager
+from .save_manager import SaveManager
+from .auth_manager import AuthManager
 
 __all__ = [
     "EventBus",
@@ -19,4 +21,6 @@ __all__ = [
     "NPCSystem",
     "CombatSystem",
     "SessionManager",
+    "SaveManager",
+    "AuthManager",
 ]
