@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>游戏内容编辑器</title>
+    <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+    <header class="ed-topbar">
+        <div class="ed-title">游戏内容编辑器</div>
+        <div class="ed-top-actions">
+            <a class="ed-btn" href="index.html">返回游戏</a>
+            <button class="ed-btn primary" id="btn-playtest" type="button">在新标签页试玩</button>
+        </div>
+    </header>
+
+    <main class="ed-main">
+        <!-- 左侧：页签 + 列表 -->
+        <aside class="ed-sidebar">
+            <div class="ed-tabs">
+                <button class="ed-tab active" data-tab="scenes" type="button">地点</button>
+                <button class="ed-tab" data-tab="items" type="button">物品</button>
+            </div>
+            <button class="ed-btn block" id="btn-new" type="button">+ 新建</button>
+            <div class="ed-list" id="ed-list"></div>
+        </aside>
+
+        <!-- 右侧：表单 -->
+        <section class="ed-form-panel">
+            <div class="ed-empty-hint" id="ed-empty">从左侧选择一项编辑，或点「新建」。</div>
+
+            <!-- 地点表单 -->
+            <form class="ed-form hidden" id="form-scene">
+                <h2 id="scene-form-title">新建地点</h2>
+                <label class="ed-field">
+                    <span>地点 ID（小写字母/数字/下划线，保存后不可改）</span>
+                    <input type="text" id="scene-id" placeholder="例：deep_cave_2">
+                </label>
+                <label class="ed-field">
+                    <span>名称</span>
+                    <input type="text" id="scene-name" placeholder="例：幽暗的森林">
+                </label>
+                <label class="ed-field">
+                    <span>描述</span>
+                    <textarea id="scene-desc" rows="4" placeholder="玩家进入场景时看到的文字"></textarea>
+                </label>
+
+                <div class="ed-field">
+                    <span>出口（通向其他地点；勾选「锁定」后需要事件规则解锁）</span>
+                    <div class="ed-check-group" id="scene-exits"></div>
+                    <input type="text" id="scene-exits-raw"
+                           placeholder="其他出口 ID（指向还没建的地点时用，逗号分隔）">
+                </div>
+
+                <div class="ed-field">
+                    <span>初始放置的物品（新游戏开始时地上就有）</span>
+                    <div class="ed-check-group" id="scene-items"></div>
+                </div>
+
+                <label class="ed-field">
+                    <span>敌人 ID（逗号分隔；敌人编辑功能将在后续里程碑开放）</span>
+                    <input type="text" id="scene-enemies" placeholder="例：cave_goblin">
+                </label>
+
+                <div class="ed-form-actions">
+                    <button type="button" class="ed-btn primary" id="scene-save">保存</button>
+                    <button type="button" class="ed-btn danger hidden" id="scene-delete">删除</button>
+                    <button type="button" class="ed-btn" id="scene-cancel">取消</button>
+                </div>
+            </form>
+
+            <!-- 物品表单 -->
+            <form class="ed-form hidden" id="form-item">
+                <h2 id="item-form-title">新建物品</h2>
+                <label class="ed-field">
+                    <span>物品 ID（小写字母/数字/下划线，保存后不可改）</span>
+                    <input type="text" id="item-id" placeholder="例：healing_potion">
+                </label>
+                <label class="ed-field">
+                    <span>名称</span>
+                    <input type="text" id="item-name" placeholder="例：治疗药水">
+                </label>
+                <label class="ed-field">
+                    <span>描述</span>
+                    <textarea id="item-desc" rows="4" placeholder="物品说明文字"></textarea>
+                </label>
+                <label class="ed-check">
+                    <input type="checkbox" id="item-is-weapon">
+                    <span>这是武器（可以在战斗中装备攻击）</span>
+                </label>
+                <label class="ed-field hidden" id="item-damage-field">
+                    <span>伤害值</span>
+                    <input type="number" id="item-damage" min="0" step="1" value="5">
+                </label>
+
+                <div class="ed-form-actions">
+                    <button type="button" class="ed-btn primary" id="item-save">保存</button>
+                    <button type="button" class="ed-btn danger hidden" id="item-delete">删除</button>
+                    <button type="button" class="ed-btn" id="item-cancel">取消</button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <!-- 消息条 -->
+    <div class="ed-toast hidden" id="ed-toast"></div>
+
+    <script src="js/editor.js"></script>
+</body>
+</html>

@@ -104,17 +104,27 @@ class ConsoleHandler:
             return f"错误：读取失败：{str(e)}"
 
     def _cmd_reset(self, args: list) -> str:
-        """完整重置 game_state —— 新开游戏专用"""
-        self._state["current_scene"] = "tavern"
-        self._item.reset_inventory()
+        """完整重置 game_state —— 新开游戏专用（初始值来自 game_config.json）"""
+        cfg = self._data.get("config") or {}
+
+        self._state["current_scene"] = cfg.get("initial_scene", "tavern")
+        # 恢复初始背包（而不是清空）
+        self._state["player_inventory"] = list(cfg.get("initial_inventory", []))
         self._sm.reset()
 
-        # 🆕 补全所有状态字段（之前漏了导致"新开游戏沿用旧状态"）
+        # 补全所有状态字段（之前漏了导致"新开游戏沿用旧状态"）
         self._state["current_battle"] = None
         self._state["current_dialogue"] = None
-        self._state["killed_enemies"] = []      # 敌人全复活！
-        self._state["game_time"] = 0            # 🆕 时间归零
-        self._state["player_hp"] = self._state.get("player_max_hp", 50)
+        self._state["killed_enemies"] = []      # 敌人全复活
+        self._state["game_time"] = 0            # 时间归零
+        player_cfg = cfg.get("player", {})
+        initial_hp = player_cfg.get("hp", self._state.get("player_max_hp", 50))
+        self._state["player_hp"] = initial_hp
+        self._state["player_max_hp"] = initial_hp
+        if "attack" in player_cfg:
+            self._state["player_attack"] = player_cfg["attack"]
+        if "defense" in player_cfg:
+            self._state["player_defense"] = player_cfg["defense"]
 
         return "游戏已完全重置（场景/背包/敌人/战斗全清）"
 

@@ -24,9 +24,21 @@ class ItemSystem:
     def get_player_inventory(self) -> list:
         """返回玩家背包的可渲染列表（给前端用）"""
         return [
-            {"id": item_id, "name": self._data["items"][item_id]["name"]}
+            {
+                "id": item_id,
+                "name": self._data["items"][item_id]["name"],
+                "is_weapon": bool(self._data["items"][item_id].get("is_weapon", False)),
+            }
             for item_id in self._state["player_inventory"]
+            if item_id in self._data["items"]
         ]
+
+    def first_weapon_id(self) -> str:
+        """返回背包中第一把武器的 id，没有则空串（攻击时自动选武器用）"""
+        for item_id in self._state["player_inventory"]:
+            if self._data["items"].get(item_id, {}).get("is_weapon"):
+                return item_id
+        return ""
 
     def item_exists(self, item_id: str) -> bool:
         return item_id in self._data["items"]

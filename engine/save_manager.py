@@ -10,6 +10,7 @@
 import sqlite3
 import json
 import os
+import copy
 import threading
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -21,11 +22,30 @@ class SaveManager:
     # 每个 session 最多几个手动存档槽位
     MAX_SLOTS = 5
 
-    def __init__(self, db_path: str = "game_data/offline_saves.db"):
+    # 老存档兜底默认值（app 层会用 game_config 派生的值覆盖，保持与初始游戏一致）
+    FALLBACK_DEFAULTS: Dict[str, Any] = {
+        "current_scene": "tavern",
+        "player_inventory": [],
+        "scene_item_states": {},
+        "scene_lock_states": {},
+        "current_dialogue": None,
+        "current_battle": None,
+        "killed_enemies": [],
+        "game_time": 0,
+        "player_hp": 50,
+        "player_max_hp": 50,
+        "player_attack": 5,
+        "player_defense": 2,
+    }
+
+    def __init__(self, db_path: str = "game_data/offline_saves.db",
+                 defaults: Optional[Dict[str, Any]] = None):
         """
         :param db_path: SQLite 数据库文件路径（相对项目根目录）
+        :param defaults: 老存档补全用的默认 game_state（通常由 game_config 派生）
         """
         self._db_path = db_path
+        self._defaults = defaults or dict(self.FALLBACK_DEFAULTS)
         self._lock = threading.Lock()
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._init_schema()
@@ -124,25 +144,9 @@ class SaveManager:
         这样以后我们给 game_state 加新字段（比如 player_mana），
         老存档读进来也会自动补默认值，不会 KeyError 或崩溃
         """
-        defaults: Dict[str, Any] = {
-            "current_scene": "tavern",
-            "player_inventory": [],
-            "scene_item_states": {},
-            "scene_lock_states": {},
-            "current_dialogue": None,
-            "current_battle": None,
-            "killed_enemies": [],          # 兼容老存档：死敌追踪
-            "game_time": 0,                # 🆕 游戏内时间
-            "player_hp": 50,
-            "player_max_hp": 50,
-            "player_attack": 5,
-            "player_defense": 2,
-            # 未来可以继续加：
-            # "player_mana": 20,
-            # "player_equipment": {"weapon": None, "armor": None},
-        }
-        # 用默认值填充缺失字段（不覆盖已有值）
+        defaults = self._defaults
+        # 用默认值填充缺失字段（不覆盖已有值）；深拷贝避免多个存档共享同一个 list/dict
         for key, default_val in defaults.items():
             if key not in raw:
-                raw[key] = default_val
+                raw[key] = copy.deepcopy(default_val)
         return raw

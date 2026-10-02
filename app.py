@@ -11,6 +11,7 @@ import random
 
 # ---------- 导入引擎模块 ----------
 from engine import SessionManager, SaveManager, AuthManager
+from engine.editor_manager import EditorManager
 
 # ---------- Flask 初始化 ----------
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -24,9 +25,10 @@ DEBUG = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 def load_game_data() -> dict:
     """从 JSON 文件加载游戏数据 —— 只读，所有 session 共用"""
     base = os.path.join(os.path.dirname(__file__), "game_data")
-    result = {"scenes": {}, "items": {}, "npcs": {}, "enemies": {}}
+    result = {"scenes": {}, "items": {}, "npcs": {}, "enemies": {}, "config": {}}
     for fname, key in [("scenes.json", "scenes"), ("items.json", "items"),
-                       ("npc_dialogues.json", "npcs"), ("enemies.json", "enemies")]:
+                       ("npc_dialogues.json", "npcs"), ("enemies.json", "enemies"),
+                       ("game_config.json", "config")]:
         path = os.path.join(base, fname)
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -36,10 +38,24 @@ def load_game_data() -> dict:
 GAME_DATA = load_game_data()
 # 全局唯一的 SessionManager —— 管理所有玩家的会话
 SM = SessionManager(GAME_DATA)
-# 全局唯一的 SaveManager —— SQLite 多槽存档（离线模式用）
-SM_SAVE = SaveManager()
+# 全局唯一的 SaveManager —— SQLite 多槽存档（默认值由 game_config 派生，兼容老存档）
+SM_SAVE = SaveManager(defaults=SM.initial_state_defaults())
 # 全局唯一的 AuthManager —— SQLite 用户账号（在线模式用，独立 auth.db）
 SM_AUTH = AuthManager()
+# 可视化编辑器数据管理（地点/物品 JSON 的校验与写盘）
+EDITOR = EditorManager(data_dir=os.path.join(os.path.dirname(__file__), "game_data"))
+
+
+def _editor_guard():
+    """线上环境（ONLINE_MODE=online）关闭所有编辑器写接口，避免匿名改游戏数据"""
+    if os.environ.get('ONLINE_MODE', '').lower() == 'online':
+        return jsonify({"success": False, "message": "线上环境已关闭编辑器接口"}), 403
+    return None
+
+
+def _action_time(name: str, default: int = 0) -> int:
+    """从 game_config 读每种操作推进的游戏时间（秒）"""
+    return (GAME_DATA.get("config") or {}).get("action_time", {}).get(name, default)
 
 # ---------- 请求计数：每 N 次请求清理一次过期 session ----------
 _request_counter = 0
@@ -188,9 +204,9 @@ def handle_action():
     else:
         result = {"success": False, "message": f"未知操作类型：{action_type}"}
 
-    # 🆕 玩家做了操作 → 推进游戏时间（最简单：每种操作固定秒数）
+    # 玩家做了操作 → 推进游戏时间（每种操作的秒数由 game_config 配置）
     if result.get("success"):
-        time_delta = {"move_scene": 300, "take_item": 20, "drop_item": 20}.get(action_type, 0)
+        time_delta = _action_time(action_type, 0)
         e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + time_delta
 
     # 🆕 玩家做了操作 → 尝试自动存档（离线模式 + 30秒防抖）
@@ -239,9 +255,13 @@ def handle_attack():
     if not e:
         return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
-    result = e["combat_system"].player_attack(data.get("weapon_id", ""))
-    # 🆕 战斗推进游戏时间（1分钟/回合）
-    e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + 60
+    # 前端无需指定武器：不传时自动使用背包中第一把武器（引擎不绑定具体物品 ID）
+    weapon_id = (data.get("weapon_id") or "").strip()
+    if not weapon_id:
+        weapon_id = e["item_system"].first_weapon_id()
+    result = e["combat_system"].player_attack(weapon_id)
+    # 战斗推进游戏时间（每回合秒数由 game_config 配置）
+    e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + _action_time("combat_turn", 60)
     # 🆕 战斗后也自动存档
     if result.get("success") or result.get("player_dead"):
         _maybe_autosave(e)
@@ -448,6 +468,75 @@ def delete_save():
     if ok:
         return jsonify({"success": True, "message": f"已删除槽位 {slot_name}"})
     return jsonify({"success": False, "message": f"槽位 {slot_name} 不存在"})
+
+
+# ============================================================
+# 5. 可视化编辑器 API（地点 / 物品）
+#    仅本地开发环境开放；线上 ONLINE_MODE=online 时全部 403
+# ============================================================
+@app.route('/api/editor/data', methods=['GET'])
+def editor_get_data():
+    """编辑器首屏数据：全部地点 + 全部物品 + 初始场景标记"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    return jsonify({
+        "success": True,
+        "scenes": GAME_DATA["scenes"],
+        "items": GAME_DATA["items"],
+        "initial_scene": (GAME_DATA.get("config") or {}).get("initial_scene", ""),
+    })
+
+
+@app.route('/api/editor/scene', methods=['POST'])
+def editor_upsert_scene():
+    """新建/更新一个地点（按 id 区分新建与编辑）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    payload = request.json or {}
+    result = EDITOR.upsert_scene(
+        GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA["enemies"], payload)
+    if result.get("success"):
+        SM.refresh_new_scenes()  # 让所有存活会话补齐新场景的状态键
+    return jsonify(result)
+
+
+@app.route('/api/editor/scene/<scene_id>', methods=['DELETE'])
+def editor_delete_scene(scene_id):
+    """删除一个地点（初始场景/被引用/有玩家在里面时拒绝）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    initial_scene = (GAME_DATA.get("config") or {}).get("initial_scene", "")
+    result = EDITOR.delete_scene(
+        GAME_DATA["scenes"], GAME_DATA["items"], scene_id,
+        initial_scene=initial_scene,
+        live_scene_ids=SM.live_current_scenes())
+    return jsonify(result)
+
+
+@app.route('/api/editor/item', methods=['POST'])
+def editor_upsert_item():
+    """新建/更新一个物品"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    payload = request.json or {}
+    result = EDITOR.upsert_item(
+        GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA.get("config") or {}, payload)
+    return jsonify(result)
+
+
+@app.route('/api/editor/item/<item_id>', methods=['DELETE'])
+def editor_delete_item(item_id):
+    """删除一个物品（被地点放置/初始背包引用时拒绝）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    result = EDITOR.delete_item(
+        GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA.get("config") or {}, item_id)
+    return jsonify(result)
 
 
 # ============================================================

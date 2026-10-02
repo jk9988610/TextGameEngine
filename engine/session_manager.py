@@ -16,6 +16,17 @@ from .item_system import ItemSystem
 from .console_handler import ConsoleHandler
 from .npc_system import NPCSystem
 from .combat_system import CombatSystem
+from .event_rules import DeclarativeRules
+
+
+# config 缺失时的兜底默认值（保证即使没有 game_config.json 引擎也能跑）
+DEFAULT_CONFIG: Dict[str, Any] = {
+    "initial_scene": "tavern",
+    "initial_inventory": [],
+    "player": {"hp": 50, "attack": 5, "defense": 2},
+    "action_time": {"move_scene": 300, "take_item": 20, "drop_item": 20, "combat_turn": 60},
+    "event_rules": [],
+}
 
 
 class SessionManager:
@@ -23,12 +34,20 @@ class SessionManager:
 
     def __init__(self, game_data: Dict[str, Any]):
         """
-        :param game_data: 全局只读的游戏数据字典（scenes/items/npcs/enemies）
+        :param game_data: 全局只读的游戏数据字典（scenes/items/npcs/enemies/config）
         """
         self._game_data = game_data
         # session_id -> { "created_at": float, "last_accessed": float, "state": dict }
         self._sessions: Dict[str, Any] = {}
         self._lock = threading.Lock()  # 简单的线程锁，防止并发创建同一 session
+
+    def _config(self) -> Dict[str, Any]:
+        """取游戏配置（内容层数据），缺字段用兜底值补全"""
+        cfg = self._game_data.get("config") or {}
+        merged = {**DEFAULT_CONFIG, **cfg}
+        merged["player"] = {**DEFAULT_CONFIG["player"], **cfg.get("player", {})}
+        merged["action_time"] = {**DEFAULT_CONFIG["action_time"], **cfg.get("action_time", {})}
+        return merged
 
     # ---------- 核心接口 ----------
     def get_or_create(self, session_id: str) -> Dict[str, Any]:
@@ -69,21 +88,23 @@ class SessionManager:
     def _create_fresh(self, session_id: str) -> Dict[str, Any]:
         """为新 session 创建一套完整独立的引擎实例"""
         gd = self._game_data  # 共享只读数据
+        cfg = self._config()  # 游戏初始配置（内容层）
 
-        # 独立的游戏状态（每个玩家各一份）
+        # 独立的游戏状态（每个玩家各一份）—— 初始值全部来自 config，引擎不写死任何游戏内容
+        player_cfg = cfg["player"]
         game_state = {
-            "current_scene": "tavern",
-            "player_inventory": ["rusty_sword"],
+            "current_scene": cfg["initial_scene"],
+            "player_inventory": list(cfg["initial_inventory"]),
             "scene_item_states": {},
             "scene_lock_states": {},
             "current_dialogue": None,
             "current_battle": None,
             "killed_enemies": [],          # 被永久击杀的敌人 id
-            "game_time": 0,                # 🆕 游戏内时间（秒数，每次操作推进）
-            "player_hp": 50,
-            "player_max_hp": 50,
-            "player_attack": 5,
-            "player_defense": 2,
+            "game_time": 0,                # 游戏内时间（秒数，每次操作推进）
+            "player_hp": player_cfg["hp"],
+            "player_max_hp": player_cfg["hp"],
+            "player_attack": player_cfg["attack"],
+            "player_defense": player_cfg["defense"],
         }
 
         # 独立的事件总线 + 所有引擎模块
@@ -97,19 +118,12 @@ class SessionManager:
         # 初始化场景状态
         scene_manager.init_scene_states()
 
-        # 🆕 关键！初始场景触发 SCENE_ENTER → 让 NPCSystem 弹出醉汉对话
+        # 初始场景触发 SCENE_ENTER → 让 NPC/战斗系统同步场景
         bus.publish("SCENE_ENTER", scene_id=game_state["current_scene"])
 
-        # ---------- 游戏专属事件订阅（每个 session 独立注册） ----------
-        # 钥匙解锁洞穴门（复制原 app.py 的逻辑，闭包引用当前 session 的 game_state）
-        def unlock_cave_door(**kwargs):
-            taken_item = kwargs.get("item_id")
-            from_scene = kwargs.get("from_scene")
-            if taken_item == "rusty_key" and from_scene == "forest":
-                game_state["scene_lock_states"]["forest"]["cave"] = False
-                print(f"🔓 会话[{session_id[:8]}] 控制台日志：玩家拿到钥匙，洞穴门已解锁")
-
-        bus.subscribe("ITEM_TAKEN", unlock_cave_door)
+        # 声明式事件规则（拿钥匙开门之类的具体游戏逻辑写在 game_config.json，
+        # 引擎这里只负责装配，不含任何具体规则）
+        DeclarativeRules(game_state).register(bus, cfg.get("event_rules", []))
 
         return {
             "game_state": game_state,
@@ -120,3 +134,40 @@ class SessionManager:
             "npc_system": npc_system,
             "combat_system": combat_system,
         }
+
+    def live_current_scenes(self) -> set:
+        """所有存活会话中玩家当前所在场景的 id 集合（编辑器删场景时做保护）"""
+        with self._lock:
+            return {info["state"]["game_state"].get("current_scene")
+                    for info in self._sessions.values()
+                    if info["state"]["game_state"].get("current_scene")}
+
+    def refresh_new_scenes(self) -> None:
+        """
+        编辑器热更新数据后调用：给所有存活会话补齐"新场景"的物品/锁状态键，
+        避免 get_current_scene() 访问到不存在的场景状态键。
+        已存在的场景状态保持不动（不抹掉玩家已拾取/已解锁的进度）。
+        """
+        with self._lock:
+            for info in self._sessions.values():
+                info["state"]["scene_manager"].init_missing_scene_states()
+
+    def initial_state_defaults(self) -> Dict[str, Any]:
+        """给 SaveManager 做老存档 normalize 用的默认值（来自 config）"""
+        cfg = self._config()
+        p = cfg["player"]
+        return {
+            "current_scene": cfg["initial_scene"],
+            "player_inventory": list(cfg["initial_inventory"]),
+            "scene_item_states": {},
+            "scene_lock_states": {},
+            "current_dialogue": None,
+            "current_battle": None,
+            "killed_enemies": [],
+            "game_time": 0,
+            "player_hp": p["hp"],
+            "player_max_hp": p["hp"],
+            "player_attack": p["attack"],
+            "player_defense": p["defense"],
+        }
+

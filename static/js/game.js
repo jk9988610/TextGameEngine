@@ -111,9 +111,10 @@ async function fetchState() {
         enemySection.style.display = 'none';
     }
 
-    // 渲染玩家背包
+    // 渲染玩家背包（同时决定攻击按钮是否可用：背包里有武器才能打）
     const invList = document.getElementById('player-inventory');
     invList.innerHTML = '';
+    let hasWeapon = false;
     if (data.player_inventory.length === 0) {
         invList.innerHTML = '<span class="empty">（背包是空的）</span>';
     } else {
@@ -122,8 +123,10 @@ async function fetchState() {
             div.className = 'item';
             div.textContent = `• ${item.name}`;
             invList.appendChild(div);
+            if (item.is_weapon) hasWeapon = true;
         });
     }
+    attackBtn.disabled = !hasWeapon;
 
     // 同时拉取对话状态并渲染
     await fetchDialogue();
@@ -274,20 +277,15 @@ function renderCombat(d) {
     const playerHpPct = Math.max(0, (p.hp / p.max_hp) * 100);
     document.getElementById('player-hp-bar').style.width = playerHpPct + '%';
     document.getElementById('player-hp-text').textContent = `HP: ${p.hp}/${p.max_hp}  |  ATK: ${p.attack}  DEF: ${p.defense}`;
-
-    // 攻击按钮（检查背包里有没有武器）
-    const hasWeapon = [...document.querySelectorAll('#player-inventory .item')]
-        .some(el => el.textContent.includes('铁剑') || el.textContent.includes('rusty_sword'));
-    attackBtn.disabled = !hasWeapon;
 }
 
 async function attackEnemy() {
-    /** 玩家攻击敌人：用 rusty_sword */
+    /** 玩家攻击敌人：武器由后端自动选择背包中第一把武器 */
     combatLog.innerHTML = '';  // 清空旧日志
     const res = await fetch('/api/combat/attack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ weapon_id: 'rusty_sword' })
+        body: JSON.stringify({})
     });
     const data = await res.json();
 

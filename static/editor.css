@@ -1,0 +1,195 @@
+/* ==========================================================================
+   editor.css —— 游戏内容编辑器独立样式（与游戏页 styles.css 完全解耦）
+   风格沿用深色毛玻璃，但 class 全部 .ed- 前缀，互不干扰
+   ========================================================================== */
+
+:root {
+    --bg: #161719;
+    --bg-panel: rgba(37, 38, 41, 0.82);
+    --bg-elevated: rgba(48, 49, 53, 0.85);
+    --bg-hover: rgba(62, 63, 68, 0.9);
+    --border: rgba(255, 255, 255, 0.10);
+    --text: #d0d0d0;
+    --text-dim: #8f8f8f;
+    --accent: #4d9fff;
+    --danger: #f14c4c;
+    --ok: #4ec9b0;
+    --warn: #d4a72c;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* ---------- 顶栏 ---------- */
+.ed-topbar {
+    flex-shrink: 0;
+    height: 44px;
+    padding: 0 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-panel);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+}
+.ed-title { font-weight: 600; font-size: 0.9rem; }
+.ed-top-actions { display: flex; gap: 0.5rem; }
+
+/* ---------- 按钮 ---------- */
+.ed-btn {
+    display: inline-block;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.32rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s;
+}
+.ed-btn:hover { background: var(--bg-hover); }
+.ed-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ed-btn.primary:hover { background: #6cb0ff; }
+.ed-btn.danger { border-color: var(--danger); color: var(--danger); }
+.ed-btn.danger:hover { background: var(--danger); color: #fff; }
+.ed-btn.block { width: 100%; margin: 0.6rem 0; }
+
+/* ---------- 主体布局 ---------- */
+.ed-main {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    min-height: 0;
+}
+.ed-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    padding: 0 0.7rem 0.7rem;
+    background: var(--bg-panel);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+}
+.ed-tabs { display: flex; gap: 0.4rem; padding-top: 0.7rem; }
+.ed-tab {
+    flex: 1;
+    padding: 0.35rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+}
+.ed-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.ed-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.ed-list-item {
+    padding: 0.45rem 0.6rem;
+    background: var(--bg-elevated);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.ed-list-item:hover { background: var(--bg-hover); }
+.ed-list-item.selected { border-color: var(--accent); }
+.ed-list-item .li-name { font-size: 0.82rem; }
+.ed-list-item .li-id { font-size: 0.7rem; color: var(--text-dim); }
+
+/* ---------- 右侧表单 ---------- */
+.ed-form-panel {
+    flex: 1;
+    padding: 1.2rem 1.6rem;
+    overflow-y: auto;
+    min-width: 0;
+}
+.ed-empty-hint { color: var(--text-dim); padding: 2rem 0; }
+.ed-form { max-width: 640px; display: flex; flex-direction: column; gap: 0.8rem; }
+.ed-form h2 { font-size: 1rem; margin-bottom: 0.3rem; }
+
+.ed-field { display: flex; flex-direction: column; gap: 0.3rem; }
+.ed-field > span { color: var(--text-dim); font-size: 0.78rem; }
+.ed-field input[type="text"],
+.ed-field input[type="number"],
+.ed-field textarea {
+    width: 100%;
+    background: rgba(12, 13, 15, 0.7);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.45rem 0.6rem;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    outline: none;
+}
+.ed-field input:focus, .ed-field textarea:focus { border-color: var(--accent); }
+.ed-field textarea { resize: vertical; }
+.ed-field input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.ed-check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; }
+.ed-check-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 0.7rem;
+    background: rgba(12, 13, 15, 0.5);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    max-height: 210px;
+    overflow-y: auto;
+}
+.ed-check-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+.ed-check-group .li-sub { color: var(--text-dim); font-size: 0.72rem; margin-left: auto; }
+.ed-check-group .li-lock {
+    margin-left: 0.8rem;
+    color: var(--warn);
+    font-size: 0.72rem;
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.ed-form-actions { display: flex; gap: 0.6rem; margin-top: 0.4rem; }
+
+/* ---------- 消息条 ---------- */
+.ed-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    max-width: 80vw;
+    padding: 0.6rem 1.1rem;
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    font-size: 0.82rem;
+    z-index: 100;
+    white-space: pre-line;
+}
+.ed-toast.success { border-color: var(--ok); }
+.ed-toast.error { border-color: var(--danger); color: #ff9f9f; }
+.ed-toast.warning { border-color: var(--warn); }
+
+.hidden { display: none !important; }

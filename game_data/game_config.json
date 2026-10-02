@@ -1,0 +1,27 @@
+{
+  "initial_scene": "tavern",
+  "initial_inventory": ["rusty_sword"],
+  "player": {
+    "hp": 50,
+    "attack": 5,
+    "defense": 2
+  },
+  "action_time": {
+    "move_scene": 300,
+    "take_item": 20,
+    "drop_item": 20,
+    "combat_turn": 60
+  },
+  "event_rules": [
+    {
+      "on": "ITEM_TAKEN",
+      "if": {
+        "item_id": "rusty_key",
+        "from_scene": "forest"
+      },
+      "do": [
+        { "type": "unlock", "scene": "forest", "exit": "cave" }
+      ]
+    }
+  ]
+}

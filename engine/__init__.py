@@ -11,6 +11,7 @@ from .combat_system import CombatSystem
 from .session_manager import SessionManager
 from .save_manager import SaveManager
 from .auth_manager import AuthManager
+from .event_rules import DeclarativeRules
 
 __all__ = [
     "EventBus",
@@ -23,4 +24,5 @@ __all__ = [
     "SessionManager",
     "SaveManager",
     "AuthManager",
+    "DeclarativeRules",
 ]
