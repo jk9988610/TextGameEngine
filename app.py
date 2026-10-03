@@ -531,6 +531,7 @@ def editor_get_data():
         "enemies": GAME_DATA["enemies"],
         "npcs": GAME_DATA["npcs"],
         "config": GAME_DATA["config"],
+        "layouts": EDITOR.load_layouts(),
         "initial_scene": (GAME_DATA.get("config") or {}).get("initial_scene", ""),
     })
 
@@ -622,7 +623,19 @@ def editor_upsert_npc():
     result = EDITOR.upsert_npc(
         GAME_DATA["npcs"], GAME_DATA["scenes"], GAME_DATA["items"],
         GAME_DATA["enemies"], payload)
+    if result.get("success"):
+        # 节点可能增删，顺带清理该 NPC 布局里的孤儿坐标（坐标独立保存，不影响结果）
+        EDITOR.prune_layouts(GAME_DATA["npcs"])
     return result
+
+
+@app.route('/api/editor/npc-layout/<npc_id>', methods=['POST'])
+def editor_save_npc_layout(npc_id):
+    """保存单个 NPC 画布的节点坐标（与游戏内容分离，仅坐标）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    return EDITOR.save_layout(npc_id, request.json or {})
 
 
 @app.route('/api/editor/npc/<npc_id>', methods=['DELETE'])
@@ -634,6 +647,8 @@ def editor_delete_npc(npc_id):
     result = EDITOR.delete_npc(
         GAME_DATA["npcs"], npc_id,
         live_dialogue_ids=SM.live_dialogue_npcs())
+    if result.get("success"):
+        EDITOR.prune_layouts(GAME_DATA["npcs"])
     return result
 
 

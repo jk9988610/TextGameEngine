@@ -51,6 +51,7 @@ class EditorManager:
             "enemies": "enemies.json",
             "npcs": "npc_dialogues.json",
             "config": "game_config.json",
+            "layouts": "npc_layouts.json",   # 画布手动布局坐标（非游戏内容）
         }
         self._lock = threading.Lock()  # 写盘串行化，避免并发保存互相覆盖
 
@@ -445,6 +446,61 @@ class EditorManager:
             config["event_rules"] = [r for r in rules if r.get("id") != rule_id]
             self._write_json("config", config)
             return {"success": True, "message": f"事件规则【{rule_id}】已删除（对新开游戏/重置生效）"}
+
+    # ---------- NPC 画布布局（坐标；非游戏内容，独立于 npc_dialogues.json） ----------
+    LAYOUT_RANGE = (-10000, 10000)
+
+    def load_layouts(self) -> Dict[str, Dict[str, Dict[str, int]]]:
+        """读取全部布局：{npc_id: {node_id: {x,y}}}；文件缺失/损坏按空处理。"""
+        try:
+            data = self.load("layouts")
+            return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def save_layout(self, npc_id: str, layout: Dict[str, Any]) -> Dict[str, Any]:
+        """保存单个 NPC 的节点坐标。只接受 {node_id:{x:int,y:int}}，非法条目丢弃；
+        布局是辅助数据，NPC/节点是否存在不在此拦截（孤儿在 prune 时清理）。"""
+        if not (isinstance(npc_id, str) and ID_PATTERN.match(npc_id)):
+            return {"success": False, "message": "NPC ID 非法"}
+        lo, hi = self.LAYOUT_RANGE
+        clean: Dict[str, Dict[str, int]] = {}
+        for node_id, pos in (layout or {}).items():
+            if not (isinstance(node_id, str) and ID_PATTERN.match(node_id)):
+                continue
+            if not isinstance(pos, dict):
+                continue
+            try:
+                x, y = int(pos.get("x")), int(pos.get("y"))
+            except (TypeError, ValueError):
+                continue
+            if lo <= x <= hi and lo <= y <= hi:
+                clean[node_id] = {"x": x, "y": y}
+        with self._lock:
+            all_layouts = self.load_layouts()
+            if clean:
+                all_layouts[npc_id] = clean
+            else:
+                all_layouts.pop(npc_id, None)   # 无有效坐标时不保留空键
+            self._write_json("layouts", all_layouts)
+        return {"success": True, "id": npc_id, "nodes": len(clean)}
+
+    def prune_layouts(self, npcs: Dict[str, Any]) -> None:
+        """删除布局里指向已不存在 NPC/节点的孤儿坐标（保存 NPC 后可调用）。"""
+        with self._lock:
+            layouts = self.load_layouts()
+            changed = False
+            # 删除整个已不存在的 NPC 布局
+            for npc_id in list(layouts.keys()):
+                if npc_id not in npcs:
+                    del layouts[npc_id]; changed = True; continue
+                # 删除该 NPC 已不存在节点的坐标
+                valid_ids = set((npcs[npc_id] or {}).get("nodes", {}).keys())
+                kept = {nid: p for nid, p in layouts[npc_id].items() if nid in valid_ids}
+                if len(kept) != len(layouts[npc_id]):
+                    layouts[npc_id] = kept; changed = True
+            if changed:
+                self._write_json("layouts", layouts)
 
     # ---------- 内部：开局配置清洗/校验 ----------
     def _clean_and_validate_config(self, payload: Dict[str, Any],

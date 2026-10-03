@@ -15,19 +15,17 @@
 - M1 引擎与游戏内容分离　M2 地点/物品编辑器　M3 金币/商店/喝药
 - M4 敌人编辑/战斗喝药/金币掉落　M5 NPC 对话树+条件+效果库
 - M6 事件规则（7类触发器）+ 开局配置（游戏标题/初始属性）
-- 回归测试 `python -m qa.run_all`（M3~M6，161 条）
+- M7 NPC 对话画布：编辑器 NPC 页签可在「列表 / 画布」间切换，Drawflow 拉线=选项跳转，
+  框选多选/整组拖动/网格吸附/坐标独立持久化（npc_layouts.json，不进游戏 JSON）
+- 回归测试 `python -m qa.run_all`（M3~M7，173 条）
 
-**现在正在做（未并入主程序）**：
-NPC 对话的**画布式可视化编辑器**原型——用 Drawflow 库把对话节点画成可拉线的卡片
-（拉线=设置选项的跳转目标），含手动摆位、框选多选、本地持久化。
-当前只是技术验证 demo：
-- `static/demo_drawflow.html`：画布 demo（手动摆放/拉线/框选/持久化）
-- `static/demo-lib/`：vendored 的 drawflow 库
+早期技术验证产物（正式版已接入 `static/lib/` + `js/graph_model.js` + `js/npc_canvas.js`）：
+- `static/demo_drawflow.html`、`static/demo_graph_style.html`：画布原型 demo
+- `static/demo-lib/`：demo 用的 drawflow 副本（正式版在 `static/lib/`）
 - `tools/mouse_studio.py` / `mouse_watch.py`：人工测交互用的鼠标录制+区域截图工具
-**正式落地时会保留现有 NPC 表单编辑器不动，画布作为新增视图接入**，游戏 JSON 格式不变。
 
 **细节去哪看（按需要深入，不用全读）**：
 - `README.md`：架构、数据模型、操作约定、避坑清单（最权威）
-- `game_data/`：引擎实际读取的游戏数据（5 个 JSON，一看就懂内容怎么组织）
+- `game_data/`：引擎实际读取的游戏数据（5 个内容 JSON + 1 个画布坐标 JSON，一看就懂）
 - `engine/`：引擎代码；`qa/`：回归测试（也是最准确的用法示例）
 - `.trae/documents/*_plan.md`：各里程碑的实施计划与决策记录

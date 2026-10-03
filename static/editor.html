@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>游戏内容编辑器</title>
     <link rel="stylesheet" href="editor.css">
+    <link rel="stylesheet" href="lib/drawflow.min.css">
 </head>
 <body>
     <header class="ed-topbar">
@@ -200,9 +201,37 @@
                 </div>
 
                 <div class="ed-field">
-                    <span>对话节点（每个节点是 NPC 说的一段话 + 玩家可选的选项；选项的「下一节点」为空 = 结束对话）</span>
+                    <div class="nc-view-bar">
+                        <span>对话节点（每个节点是 NPC 说的一段话 + 玩家可选的选项；选项的「下一节点」为空 = 结束对话）</span>
+                        <span class="nc-view-switch">
+                            <button type="button" class="ed-btn mini nc-view-btn" data-view="list">列表</button>
+                            <button type="button" class="ed-btn mini nc-view-btn" data-view="canvas">画布</button>
+                        </span>
+                    </div>
                     <div id="npc-nodes"></div>
                     <button type="button" class="ed-btn mini" id="npc-add-node">+ 添加节点</button>
+
+                    <!-- 画布视图（默认隐藏；由 npc_canvas.js 挂载 Drawflow） -->
+                    <div id="npc-canvas-wrap" class="nc-canvas-wrap hidden">
+                        <div class="nc-canvas-toolbar">
+                            <button type="button" class="ed-btn mini" id="nc-canvas-exit">← 返回列表</button>
+                            <span class="nc-tb-sep"></span>
+                            <button type="button" class="ed-btn mini" id="nc-canvas-add">＋ 卡片</button>
+                            <button type="button" class="ed-btn mini" id="nc-canvas-zoomout">−</button>
+                            <button type="button" class="ed-btn mini" id="nc-canvas-reset">⊙</button>
+                            <button type="button" class="ed-btn mini" id="nc-canvas-zoomin">＋</button>
+                            <label class="nc-snap"><input type="checkbox" id="nc-canvas-snap" checked> 吸附</label>
+                            <select id="nc-canvas-grid">
+                                <option value="28">普通 28</option>
+                                <option value="14">精细 14</option>
+                            </select>
+                            <span class="nc-dirty hidden" id="nc-canvas-dirty">画布有结构改动，请保存生效</span>
+                            <span class="nc-hint">左键拖卡/拖框多选 · 右缘蓝点拉线 · 右键拖画布 · 滚轮缩放</span>
+                            <button type="button" class="ed-btn mini primary" id="nc-canvas-save">保存</button>
+                        </div>
+                        <div id="npc-canvas" class="nc-canvas"></div>
+                        <div id="npc-canvas-marquee" class="nc-marquee"></div>
+                    </div>
                 </div>
 
                 <!-- 动态下拉候选（节点/物品/敌人/地点） -->
@@ -306,6 +335,9 @@
     <!-- 消息条 -->
     <div class="ed-toast hidden" id="ed-toast"></div>
 
+    <script src="lib/drawflow.min.js"></script>
+    <script src="js/graph_model.js"></script>
     <script src="js/editor.js"></script>
+    <script src="js/npc_canvas.js"></script>
 </body>
 </html>

@@ -85,6 +85,7 @@ function switchTab(next) {
     selectedId = null;
     isNew = false;
     document.body.classList.remove('config-open');
+    window.NpcCanvas?.exit();   // 离开 NPC 页签时退出全屏画布
     document.querySelectorAll('.ed-tab').forEach(b =>
         b.classList.toggle('active', b.dataset.tab === tab));
     renderList();
@@ -127,6 +128,7 @@ function showEmpty() {
     selectedId = null;
     isNew = false;
     document.body.classList.remove('config-open');
+    window.NpcCanvas?.exit();   // 取消/删除后收起全屏画布
     $('ed-empty').classList.remove('hidden');
     $('form-scene').classList.add('hidden');
     $('form-item').classList.add('hidden');
@@ -265,6 +267,7 @@ function showForm(kind, id) {
         $('form-event').classList.add('hidden');
         $('form-npc').classList.remove('hidden');
         renderNpcForm(npc);
+        window.NpcCanvas?.bind(id);
     } else if (kind === 'events') {
         const rule = (DATA.config.event_rules || []).find(r => r.id === id);
         if (!rule) return;
@@ -867,7 +870,10 @@ function collectNpcPayload() {
 }
 
 async function saveNpc() {
-    const payload = collectNpcPayload();
+    // 画布开着时，节点集合/next 以画布内存为准合并（DOM 收集的台词/条件/效果保留）
+    const payload = window.NpcCanvas
+        ? window.NpcCanvas.mergeForSave(collectNpcPayload())
+        : collectNpcPayload();
     const res = await fetch('/api/editor/npc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -878,6 +884,7 @@ async function saveNpc() {
     selectedId = data.id;
     isNew = false;
     await loadData();
+    window.NpcCanvas?.onSaved(data.id);
     toast([data.message, ...(data.warnings || [])].join('\n'),
         (data.warnings || []).length ? 'warning' : 'success');
 }
@@ -1047,6 +1054,7 @@ async function deleteEventRule() {
 // ---------- 游戏设置（开局配置） ----------
 function openConfig() {
     const cfg = DATA.config || {};
+    window.NpcCanvas?.exit();   // 游戏设置全屏面板与画布互斥
     document.body.classList.add('config-open');
     selectedId = null;
     renderList();

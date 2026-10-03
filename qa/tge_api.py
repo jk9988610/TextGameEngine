@@ -237,6 +237,16 @@ class GameClient:
     def event_rule_delete(self, rule_id: str) -> dict:
         return self.editor_delete("event-rule", rule_id)
 
+    # ---------- NPC 画布布局（坐标，独立通道） ----------
+    def layout_all(self) -> dict:
+        return self.editor_data().get("layouts") or {}
+    def layout_get(self, npc_id: str) -> dict:
+        return self.layout_all().get(npc_id, {})
+    def layout_save(self, npc_id: str, layout: dict) -> dict:
+        _, d = self.post(
+            f"/api/editor/npc-layout/{urllib.parse.quote(npc_id)}", layout)
+        return d
+
     # ---------- 清理 ----------
     def cleanup_saves(self, db_path: str = DEFAULT_DB) -> int:
         """删掉本 client 在 SQLite 里留下的所有存档槽，返回删除行数。"""
@@ -255,10 +265,10 @@ class GameClient:
 # 编辑器数据快照 / 还原
 # ============================================================
 def editor_snapshot(c: GameClient) -> dict:
-    """跑用例前拍下 scenes/items/enemies/npcs/config 五份数据的深拷贝。"""
+    """跑用例前拍下 scenes/items/enemies/npcs/config/layouts 六份数据的深拷贝。"""
     d = c.editor_data()
     return {k: copy.deepcopy(d[k]) for k in
-            ("scenes", "items", "enemies", "npcs", "config")}
+            ("scenes", "items", "enemies", "npcs", "config", "layouts")}
 
 
 def editor_restore(c: GameClient, snap: dict) -> None:
@@ -309,6 +319,14 @@ def editor_restore(c: GameClient, snap: dict) -> None:
             progress = progress or r.get("success", False)
         if not progress:
             break
+
+    # 3) 布局还原（独立通道）：快照里的逐份写回，快照外的写空删除
+    snap_layouts = snap.get("layouts") or {}
+    for npc_id, layout in snap_layouts.items():
+        c.layout_save(npc_id, layout)
+    for npc_id in c.layout_all():
+        if npc_id not in snap_layouts:
+            c.layout_save(npc_id, {})
 
 
 def cleanup_qa_saves(db_path: str = DEFAULT_DB) -> int:

@@ -4,7 +4,7 @@ Flask + 原生 HTML/CSS/JS（零前端框架、零构建步骤）的**点击式�
 引擎逻辑与游戏数据严格分离：场景、物品、敌人、NPC 对话全部是 JSON，既能手改，也能用内置的可视化编辑器制作。
 
 - 单机离线游玩：多槽存档 + 自动存档，存本地 SQLite
-- 可视化编辑：地点 / 物品 / 敌人 / NPC 对话树 / 商店，即改即玩
+- 可视化编辑：地点 / 物品 / 敌人 / NPC 对话树（列表 + 拉线画布双视图）/ 商店，即改即玩
 - 部署形态：本地 venv 直接跑，也可 Gunicorn + Nginx 部署（`deploy/`）
 
 ---
@@ -35,7 +35,7 @@ engine/                 # 引擎（与具体游戏内容无关）
   combat_system.py      # 回合制战斗、战斗喝药、金币掉落
   npc_system.py         # 对话树：条件问候、选项条件（效果交路由层执行）
   effects.py            # 通用条件 + 效果库（M5 起所有"规则"都走这里）
-  event_rules.py        # 声明式事件（目前仅 ITEM_TAKEN→unlock）
+  event_rules.py        # 声明式事件（7 类触发器，条件/效果复用 effects.py）
   console_handler.py    # 开发者控制台
   save_manager.py       # SQLite 多槽存档（读档自动补全新字段）
   editor_manager.py     # 编辑器数据校验/原子写/.bak/引用保护
@@ -43,8 +43,10 @@ engine/                 # 引擎（与具体游戏内容无关）
 game_data/              # 游戏数据（JSON，全部可配）
   game_config.json      # 初始场景/背包/金币/玩家属性/操作耗时/event_rules
   scenes.json items.json enemies.json npc_dialogues.json
+  npc_layouts.json      # 对话画布的节点坐标（仅布局，非游戏内容；M7）
   offline_saves.db      # 离线存档（运行后生成）
 static/                 # 前端：index.html + editor.html + js/*（原生 JS）
+  lib/drawflow.*        # 对话画布 vendored 库（零构建）
 qa/                     # 标准库 HTTP 回归测试（见第 4 节）
 deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd）
 ```
@@ -59,6 +61,7 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 | `items.json` | 普通物品；`is_weapon+damage` 武器；`usable+heal` 消耗品；`currency_value` 货币（拾取即折算金币，不进背包） |
 | `enemies.json` | `hp/attack/defense/reward_items/reward_gold`（金币直接入账，物品掉地上需拾取） |
 | `npc_dialogues.json` | `greeting` + `greeting_rules:[{if,node}]` 起点；`nodes` 节点树；选项可挂 `if` 条件与 `effects` 效果 |
+| `npc_layouts.json` | **仅画布坐标** `{npc_id:{node_id:{x,y}}}`，运行时引擎完全不读；节点增删后自动清孤儿坐标 |
 | `game_config.json` | 一切初始值：游戏标题/简介、初始场景/背包/金币/玩家属性；`event_rules` 事件规则 |
 
 **条件**（effects.py）：`{flag}` / `{has_item}` / `{enemy_killed}` / `{gold_gte}`。
@@ -78,21 +81,35 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 战斗公式：玩家命中 = 武器 damage − 敌防；敌人反击 = max(1, 敌攻 − 玩家防)。
 （注意：玩家自身的 attack 属性当前不参与命中，别按它算预期伤害。）
 
+**NPC 对话画布**（M7，编辑器 NPC 页签「列表 / 画布」切换）：
+- 画布与列表编辑同一个内存 NPC 对象；拉线 = 选项的 `next`，增删卡片 = 增删节点。
+  结构改动仍要点「保存」走 `/api/editor/npc`（后端校验不绕过）；台词/条件/效果的精细编辑留在列表，
+  卡片上有「在列表编辑」跳转。
+- 拖动坐标走**独立通道**防抖存 `/api/editor/npc-layout/<id>` → `npc_layouts.json`，
+  游戏 JSON 永远不含 x/y；新建未保存的 NPC 不能开画布。
+- 画布为顶栏以下的**全屏视图**（侧栏自动收起，覆盖在页面上不挤文档流）；工具栏可
+  「← 返回列表」或直接「保存」；切页签/删 NPC/开游戏设置会自动退出画布。
+- 交互：左键拖卡 / 空白拖框多选（Ctrl 追加）/ 右缘蓝点拉线 / 右键拖画布 / 滚轮缩放 / 28·14 网格吸附。
+- 前端分层：`js/graph_model.js`（数据⇄图模型纯函数，零 DOM）+ `js/npc_canvas.js`（Drawflow 控制器），
+  换库只换后者。
+
 里程碑：M1 引擎去游戏化 → M2 地点/物品编辑器 → M3 金币/商店/喝药 → M4 敌人编辑 →
-M5 NPC/对话/条件效果 → M6 事件规则/开局配置。
-后续规划：M7 战斗深化（技能/防御/逃跑/多敌人/经验）、限量商店、任务日志 UI。
+M5 NPC/对话/条件效果 → M6 事件规则/开局配置 → M7 NPC 对话画布。
+后续规划：战斗深化（技能/防御/逃跑/多敌人/经验）、限量商店、任务日志 UI。
 
 ---
 
 ## 4. 测试：`qa/` 包（仅 Python 标准库，无第三方依赖）
 
 ```powershell
-.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（M3~M6，161 条）
-.\.venv\Scripts\python.exe -m qa.m6_events_config  # 单跑一个里程碑
+.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（M3~M7，173 条）
+.\.venv\Scripts\python.exe -m qa.m7_npc_canvas    # 单跑一个里程碑
 ```
 
-- 新里程碑：新建 `qa/m6_xxx.py`，提供 `SUITE` 名和 `run(r)` 即可被自动发现。
-- 共享层 `qa/tge_api.py`：`GameClient`（自动带 client_id/mode、UTF-8 JSON、reset/teleport/give/set_flag/move/combat/dialogue/editor_*/config/event-rule/game-info 等动词）、`editor_snapshot/editor_restore`（场景/物品/敌人/NPC/config 五份数据自动还原）。
+- 新里程碑：新建 `qa/m7_xxx.py`，提供 `SUITE` 名和 `run(r)`（套件内自建 GameClient）即可被自动发现。
+- 共享层 `qa/tge_api.py`：`GameClient`（自动带 client_id/mode、UTF-8 JSON、reset/teleport/give/set_flag/move/combat/dialogue/editor_*/config/event-rule/layout/game-info 等动词）、`editor_snapshot/editor_restore`（场景/物品/敌人/NPC/config/**layouts** 六份数据自动还原）。
+- 画布的视觉/交互（拉线、框选、拖卡）不走合成点击，按 M7 计划文档的人工清单走查；
+  `graph_model.js` 纯函数可在浏览器控制台直接断言（本机无 Node 运行时）。
 - 安全约定：测试实体一律 `qa_` 前缀；套件结束自动清 qa_ 存档与 game_data/*.bak；跑前确认 `app.py` 已启动。
 - 可用 `TGE_BASE=https://...` 指向其他服务器跑冒烟测试。
 

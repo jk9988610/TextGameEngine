@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Drawflow 手感 demo · 规范化版</title>
+<title>对话画布 demo · 网格/多NPC</title>
 <link rel="stylesheet" href="demo-lib/drawflow.min.css">
 <style>
 :root {
@@ -13,133 +13,111 @@
 html,body { height:100%; overflow:hidden;
   font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; background:#141518; color:var(--text); }
 
-#hint {
-  position:fixed; top:12px; left:12px; z-index:40;
-  background:rgba(30,31,34,.92); border:1px solid #3a3d45; border-radius:8px;
-  padding:8px 12px; font-size:12px; color:var(--sub); line-height:1.7;
-}
-#hint b { color:var(--text); }
-
 #df {
-  position:fixed; inset:0;
+  position:fixed; top:48px; left:0; right:0; bottom:34px;
+  --grid:28px;
   background:
     linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px),
     #1a1b1f;
-  background-size:28px 28px;
+  background-size:var(--grid) var(--grid);
 }
-#df:focus { outline:none; }
 #df.grabbing, #df.grabbing * { cursor:grabbing !important; }
 
-/* ===== 卡片规范化：严格保持 Drawflow 标准 DOM
-   node > [.inputs] [.drawflow_content_node] [.outputs]
-   output 圆点绝不移动出库结构（库靠 parentElement.parentElement.id 找节点），
-   对齐选项行用 CSS 变量：--y1/--y2 由 JS 按行高写入。 ===== */
+/* 卡片：统一宽 280 = 10 普通格(28)，位置吸附格点 */
 .drawflow .drawflow-node {
-  width:260px; min-height:0; padding:0;
-  display:flex; align-items:stretch;
-  background:var(--card-bg);
-  border:1.5px solid var(--card-border);
-  border-radius:10px;
-  color:var(--text);
-  box-shadow:0 6px 22px rgba(0,0,0,.28);
+  width:280px; min-height:0; padding:0; display:flex; align-items:stretch;
+  background:var(--card-bg); border:1.5px solid var(--card-border); border-radius:10px;
+  color:var(--text); box-shadow:0 6px 22px rgba(0,0,0,.28);
   backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
 .drawflow .drawflow-node.selected { background:var(--card-bg);
   border-color:var(--hl); box-shadow:0 0 0 3px rgba(77,159,255,.16); }
-
-/* 左右端口列宽为 0（圆点压在卡片边缘线上） */
 .drawflow .drawflow-node .inputs,
 .drawflow .drawflow-node .outputs { width:0; }
-.drawflow .drawflow-node .inputs  { display:flex; align-items:center; }
+.drawflow .drawflow-node .inputs { display:flex; align-items:center; }
 .drawflow .drawflow-node .outputs { display:block; position:relative; }
-
 .drawflow_content_node { width:100%; position:relative; }
-
-.n-head {
-  font-size:11px; color:var(--sub); letter-spacing:.5px; text-transform:uppercase;
-  padding:8px 11px; border-bottom:1px solid var(--card-border);
-}
+.n-head { font-size:11px; color:var(--sub); letter-spacing:.5px; text-transform:uppercase;
+  padding:8px 11px; border-bottom:1px solid var(--card-border); }
 .n-text { padding:8px 11px; font-size:12.5px; line-height:1.55; }
-.n-choice {
-  display:flex; gap:7px; align-items:center;
-  padding:7px 11px; font-size:12px; border-top:1px solid rgba(255,255,255,.04);
-}
-.n-choice::before { content:""; width:5px; height:5px; border-radius:50%;
-  background:var(--sub); flex:none; }
+.n-choice { display:flex; gap:7px; align-items:center; padding:7px 11px; font-size:12px;
+  border-top:1px solid rgba(255,255,255,.04); }
+.n-choice::before { content:""; width:5px; height:5px; border-radius:50%; background:var(--sub); flex:none; }
 .n-choice .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .n-choice .n { font-size:10.5px; color:var(--hl); }
 
-/* 端口圆点：13px 压在卡片边缘线上。input 垂直居中；
-   output 用节点上的 --yN 变量定位到第 N 条选项行中心（JS 写入） */
 .drawflow .drawflow-node .input,
 .drawflow .drawflow-node .output {
   position:absolute; width:13px; height:13px;
   background:#1a1b1f; border:2px solid var(--hl); border-radius:50%;
   cursor:crosshair; z-index:3; margin:0;
 }
-.drawflow .drawflow-node .input {
-  left:-6.5px; top:50%; transform:translateY(-50%);
-}
-.drawflow .drawflow-node .output {
-  right:-6.5px; transform:translateY(-50%);
-  top:var(--y, 50%);
-}
-.drawflow .drawflow-node .output_1 { top:var(--y1, 50%); }
-.drawflow .drawflow-node .output_2 { top:var(--y2, 50%); }
-.drawflow .drawflow-node .output_3 { top:var(--y3, 50%); }
-.drawflow .drawflow-node .output_4 { top:var(--y4, 50%); }
-.drawflow .drawflow-node .output_5 { top:var(--y5, 50%); }
-.drawflow .drawflow-node .output_6 { top:var(--y6, 50%); }
-.drawflow .drawflow-node .output_7 { top:var(--y7, 50%); }
-.drawflow .drawflow-node .output_8 { top:var(--y8, 50%); }
+.drawflow .drawflow-node .input { left:-6.5px; top:50%; transform:translateY(-50%); }
+.drawflow .drawflow-node .output { right:-6.5px; transform:translateY(-50%); top:var(--y,50%); }
+.drawflow .drawflow-node .output_1{top:var(--y1,50%)} .drawflow .drawflow-node .output_2{top:var(--y2,50%)}
+.drawflow .drawflow-node .output_3{top:var(--y3,50%)} .drawflow .drawflow-node .output_4{top:var(--y4,50%)}
+.drawflow .drawflow-node .output_5{top:var(--y5,50%)} .drawflow .drawflow-node .output_6{top:var(--y6,50%)}
+.drawflow .drawflow-node .output_7{top:var(--y7,50%)} .drawflow .drawflow-node .output_8{top:var(--y8,50%)}
 
-/* 连线 */
 .drawflow .connection .main-path { stroke:var(--edge); stroke-width:2px; }
 .drawflow .connection .main-path:hover { stroke:var(--hl); }
 .drawflow .connection .main-path.selected { stroke:#4ade80; }
 .drawflow-delete { background:#f87171; border:2px solid #1a1b1f; width:26px; height:26px;
   line-height:22px; border-radius:50%; }
 
-#toolbar {
-  position:fixed; top:12px; left:12px; z-index:40; display:flex; align-items:center; gap:6px;
-  background:rgba(26,27,31,.92); border:1px solid #2f3239; border-radius:10px; padding:7px 9px;
+/* 顶栏（VS Code 风格通栏） */
+#topbar { position:fixed; top:0; left:0; right:0; height:48px; z-index:40;
+  display:flex; align-items:center; gap:6px; padding:0 10px;
+  background:rgba(26,27,31,.96); border-bottom:1px solid #2f3239; }
+#topbar .tb-title { font-size:13px; font-weight:600; color:var(--text); padding:0 4px; }
+#topbar .sp { flex:1; }
+#npc-select { background:#26272b; color:var(--text); border:1px solid #3a3d45; border-radius:7px;
+  padding:6px 8px; font-size:12.5px; font-family:inherit; }
+
+/* 右侧编辑栏：贴上顶栏(48)与底栏(34)，可整体滑出收纳 */
+#codepanel {
+  position:fixed; top:48px; right:0; bottom:34px; width:340px; z-index:30;
+  background:rgba(26,27,31,.96); border-left:1px solid #2f3239;
+  display:flex; flex-direction:column; overflow:hidden;
+  transition: transform .16s ease, width .16s ease;
 }
-.tb { border:1px solid #3a3d45; background:#26272b; color:var(--text);
-  border-radius:7px; padding:6px 12px; font-size:12.5px; cursor:pointer; font-family:inherit; }
+#codepanel.collapsed { transform: translateX(100%); }
+#codepanel .h { padding:8px 12px; font-size:12px; color:var(--sub); border-bottom:1px solid #2f3239;
+  display:flex; align-items:center; gap:6px; }
+#codepanel .h .sp { flex:1; }
+#codepanel .h button { border:1px solid #3a3d45; background:#26272b; color:var(--text); border-radius:6px;
+  padding:3px 9px; font-size:11.5px; cursor:pointer; font-family:inherit; }
+#codepanel .h button:hover { border-color:var(--hl); }
+#codepanel textarea { flex:1; width:100%; border:0; resize:none; background:transparent; color:#c8d4e8;
+  padding:10px 12px; font-size:11.5px; line-height:1.6;
+  font-family:Consolas,"Courier New",monospace; outline:none; }
+/* 编辑栏收纳后，顶栏抽屉钮给出激活态提示 */
+#btn-toggle-panel.active { background:var(--hl); border-color:var(--hl); color:#fff; }
+/* 顶栏通用按钮 */
+.tb { border:1px solid #3a3d45; background:#26272b; color:var(--text); border-radius:7px;
+  padding:6px 11px; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
 .tb:hover { border-color:var(--hl); }
 .tb.primary { background:var(--hl); border-color:var(--hl); color:#fff; }
 .tb.danger { color:#fca5a5; }
-.tb-sep { width:1px; height:20px; background:#3a3d45; margin:0 3px; }
+.tb-sep { width:1px; height:22px; background:#3a3d45; margin:0 2px; }
 
-/* JSON 面板：可编辑 + 复制/应用 */
-#codepanel {
-  position:fixed; top:52px; right:12px; width:330px; bottom:12px; z-index:30;
-  background:rgba(26,27,31,.96); border:1px solid #2f3239; border-radius:10px;
-  display:flex; flex-direction:column; overflow:hidden;
-}
-#codepanel .h { padding:8px 12px; font-size:12px; color:var(--sub);
-  border-bottom:1px solid #2f3239; display:flex; align-items:center; gap:6px; }
-#codepanel .h .sp { flex:1; }
-#codepanel .h button { border:1px solid #3a3d45; background:#26272b; color:var(--text);
-  border-radius:6px; padding:3px 9px; font-size:11.5px; cursor:pointer; font-family:inherit; }
-#codepanel .h button:hover { border-color:var(--hl); }
-#codepanel textarea {
-  flex:1; width:100%; border:0; resize:none; background:transparent;
-  color:#c8d4e8; padding:10px 12px; font-size:11.5px; line-height:1.6;
-  font-family:Consolas,"Courier New",monospace; outline:none;
-}
+/* 底栏状态栏 */
+#statusbar { position:fixed; left:0; right:0; bottom:0; height:34px; z-index:40;
+  display:flex; align-items:center; gap:18px; padding:0 14px;
+  background:rgba(26,27,31,.95); border-top:1px solid #2f3239; font-size:12px; color:var(--sub); }
+#statusbar b { color:var(--text); font-weight:600; }
+#statusbar .sp { flex:1; }
+#statusbar label { display:flex; align-items:center; gap:5px; cursor:pointer; user-select:none; }
+#statusbar select { background:#26272b; color:var(--text); border:1px solid #3a3d45; border-radius:5px;
+  padding:2px 5px; font-size:11.5px; font-family:inherit; }
 
-/* 框选矩形（屏幕坐标 fixed） */
-#marquee {
-  position:fixed; z-index:20; display:none; pointer-events:none;
-  border:1.5px solid var(--hl); background:rgba(77,159,255,.10);
-  border-radius:2px;
-}
-/* 多选高亮（与库单选 .selected 并存的独立标记） */
-.drawflow-node.multi-sel {
-  border-color:#7dd3fc; box-shadow:0 0 0 3px rgba(125,211,252,.25);
-}
+/* 框选矩形 */
+#marquee { position:fixed; z-index:20; display:none; pointer-events:none;
+  border:1.5px solid var(--hl); background:rgba(77,159,255,.10); border-radius:2px; }
+.drawflow-node.multi-sel { border-color:#7dd3fc; box-shadow:0 0 0 3px rgba(125,211,252,.25); }
+
+/* 顶栏按钮（.tb 定义在下方统一处） */
 </style>
 </head>
 <body>
@@ -147,403 +125,369 @@ html,body { height:100%; overflow:hidden;
 <div id="df"></div>
 <div id="marquee"></div>
 
-<div id="toolbar">
-  <button id="btn-add" class="tb primary" title="在画布左上添加一张卡片">＋ 添加卡片</button>
-  <button id="btn-sample" class="tb" title="脚本一键铺出示例内容（快速进入工作）">加载示例</button>
-  <button id="btn-clear" class="tb danger" title="清空所有卡片和连线">清空画布</button>
+<header id="topbar">
+  <button id="btn-toggle-panel" class="tb" title="收纳/展开编辑栏（Ctrl+B）">☰</button>
+  <span class="tb-title">对话画布</span>
   <span class="tb-sep"></span>
-  <button id="zout" class="tb" title="缩小">－</button>
-  <button id="zreset" class="tb" title="视图复位">⊙</button>
-  <button id="zin" class="tb" title="放大">＋</button>
+  <select id="npc-select" title="每个 NPC 的对话是一块独立画布"></select>
+  <button id="btn-add" class="tb primary">＋ 添加卡片</button>
+  <button id="btn-sample" class="tb">加载示例</button>
+  <button id="btn-clear" class="tb danger">清空画布</button>
   <span class="tb-sep"></span>
-  <button id="zreset-content" class="tb" title="清除本地保存并回到空白">重置存档</button>
-</div>
+  <button id="zout" class="tb">−</button>
+  <button id="zreset" class="tb">⊙</button>
+  <button id="zin" class="tb">＋</button>
+  <span class="sp"></span>
+  <button id="zreset-content" class="tb">重置存档</button>
+</header>
 
-<div id="codepanel">
-  <div class="h"><span>nodes JSON（可编辑）</span><span class="sp"></span>
-    <button id="btn-apply">应用</button><button id="btn-copy">复制</button>
-  </div>
+<aside id="codepanel">
+  <div class="h"><span>当前 NPC 的 nodes（可编辑）</span><span class="sp"></span>
+    <button id="btn-apply">应用</button><button id="btn-copy">复制</button></div>
   <textarea id="code" spellcheck="false"></textarea>
+</aside>
+
+<div id="statusbar">
+  <span>工程文件：<b>npc_dialogues.json</b></span>
+  <span>画布：<b id="st-npc">—</b></span>
+  <span>鼠标：<b id="st-xy">0, 0</b> 格</span>
+  <span>缩放：<b id="st-zoom">100%</b></span>
+  <span class="sp"></span>
+  <label><input type="checkbox" id="chk-snap" checked> 吸附网格</label>
+  <span>精度 <select id="sel-grid">
+    <option value="28">普通 28</option>
+    <option value="14">精细 14</option>
+  </select></span>
 </div>
 
 <script src="demo-lib/drawflow.min.js"></script>
 <script>
-/* ========= 示例数据：仅供"加载示例"按钮/脚本一键铺底，初始画布是空的 ========= */
+/* ===== 网格原子体系：普通 28 / 精细 14；卡宽 280=10 格；列距 15 格 ===== */
+const G_COARSE=28, G_FINE=14, COL=15*G_COARSE;
+
+/* 示例：两个 NPC，各自独立画布（取自游戏真实数据，坐标已对齐格点） */
 const SAMPLE = {
-  greet: {
-    x: 60, y: 90,
-    text: "你好啊，旅行者。我是这片森林的守护者。",
-    choices: [
-      { text: "这片森林里有什么秘密吗？", next: "secret" },
-      { text: "（默默离开）" },
-    ]
+  npc_1_drunk: {
+    greet:{x:56,y:84,text:"（*巴尼眯着醉醺醺的眼睛盯着你*）你…你是新来的吧？坐下来喝一杯？",
+      choices:[{text:"好啊，来一杯！",next:"drink_yes"},{text:"不用了，我只是路过。",next:"drink_no"}]},
+    drink_yes:{x:56,y:252,text:"来来来，这杯我请！不过…这酒可不便宜哦。",
+      choices:[{text:"算了，我身上没带钱。",next:"drink_no"}]},
+    drink_no:{x:56,y:420,text:"哼，没眼光的小子…（*他耸耸肩又倒在桌上打呼噜*）",
+      choices:[{text:"（离开）"}]},
+    ask_key:{x:COL+56,y:84,text:"哦…有人早上把它丢在外面那棵老橡树下了。",
+      choices:[{text:"谢谢提示！",next:"leave"}]},
+    leave:{x:COL+56,y:252,text:"（*你悄悄离开了醉汉身边*）",choices:[]},
   },
-  secret: {
-    x: 430, y: 150,
-    text: "森林深处有个神秘洞穴，被锁住了，需要特殊钥匙。",
-    choices: []
-  },
-  shop: {
-    x: 60, y: 420,
-    text: "治疗药水一瓶一个金币，明码标价。",
-    choices: []
+  npc_2_sprite: {
+    greet:{x:56,y:84,text:"你好啊，旅行者。我是这片森林的守护者。",
+      choices:[{text:"这片森林里有什么秘密吗？",next:"secret"},
+               {text:"这把钥匙开什么？",next:"has_key",if:{has_item:"rusty_key"}},
+               {text:"（默默离开）"}]},
+    secret:{x:56,y:336,text:"森林深处有个神秘洞穴，被锁住了，需要特殊钥匙。",
+      choices:[{text:"多谢告诉我！"}]},
+    has_key:{x:COL+56,y:84,text:"你可以用它打开森林西边的洞穴门，小心怪物。",
+      choices:[{text:"好的，我去看看！"}]},
+    after_kill:{x:2*COL+56,y:84,text:"你真的打败了哥布林？！你做了件了不起的事！",
+      choices:[{text:"只是碰巧。",next:"after_kill_humble"},{text:"挺难对付的。",next:"after_kill_hard"}]},
+    after_kill_hard:{x:2*COL+56,y:252,text:"来，让我为你祝福——",
+      choices:[{text:"精神好多了！（最大HP+5）",next:"blessing_done",effects:[{type:"max_hp",amount:5}]}]},
+    blessing_done:{x:2*COL+56,y:420,text:"愿风永远指引你的道路，旅行者。",choices:[{text:"再见"}]},
   }
 };
-let DATA = {};   // 初始空白
 
+let DATA = {};            // { npcId: { nodeId:{x,y,text,choices} } }
+let currentNpc = null;
+const cur = () => DATA[currentNpc] || {};
 const $ = id => document.getElementById(id);
 const esc = s => (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
 const editor = new Drawflow($("df"));
 editor.start();
-editor.force_first_input = true;   // 拖到卡片任意位置即接入其第一个（唯一）入口
+editor.force_first_input = true;
 editor.zoom_max = 1.6; editor.zoom_min = 0.4;
 
-const idMap = {};   // drawflow 数字 id -> 我们的节点 id
+const idMap = {};
+let snapOn = true, gridSize = G_COARSE;
+const snap = v => snapOn ? Math.round(v/gridSize)*gridSize : Math.round(v);
+const liveData = () => editor.drawflow.drawflow.Home.data;
+const nodePos = id => { const d=liveData()[id]; return {x:d.pos_x,y:d.pos_y}; };
 
-/* ===== 模型 → 画布：DATA 重建整张图 ===== */
-function renderGraph(data) {
+/* ===== 渲染当前 NPC 画布 ===== */
+function renderGraph() {
+  const data = cur();
   editor.clear();
-  Object.keys(idMap).forEach(k => delete idMap[k]);
-
-  for (const [id, n] of Object.entries(data)) {
-    const html =
-      `<div class="n-head">${id}</div><div class="n-text">${esc(n.text)}</div>` +
-      n.choices.map((c, i) =>
-        `<div class="n-choice" data-idx="${i}">` +
-        `<span class="t">${esc(c.text || "（未填文字）")}</span>` +
-        (c.next ? `<span class="n">→ ${c.next}</span>` : ``) + `</div>`).join("");
-    const dfId = editor.addNode(id, 1, n.choices.length, n.x ?? 80, n.y ?? 80,
-                                 "npc-node", {}, html);
-    idMap[dfId] = id;
-    placePorts(dfId, n.choices);
+  Object.keys(idMap).forEach(k=>delete idMap[k]);
+  for (const [id,n] of Object.entries(data)) {
+    const html = `<div class="n-head">${id}</div><div class="n-text">${esc(n.text)}</div>` +
+      n.choices.map((c,i)=>`<div class="n-choice" data-idx="${i}"><span class="t">${esc(c.text||"（未填文字）")}</span>`+
+        (c.next?`<span class="n">→ ${c.next}</span>`:``)+`</div>`).join("");
+    const dfId = editor.addNode(id,1,n.choices.length,snap(n.x??2*G_COARSE),snap(n.y??3*G_COARSE),"npc-node",{},html);
+    idMap[dfId]=id; placePorts(dfId);
   }
-  // 连线（output_N 对应第 N-1 个选项）
-  for (const [id, n] of Object.entries(data)) {
-    const dfFrom = dfIdOf(id);
-    n.choices.forEach((c, i) => {
-      if (c.next && data[c.next]) {
-        editor.addConnection(dfFrom, dfIdOf(c.next), `output_${i+1}`, "input_1");
-      }
-    });
-  }
+  for (const [id,n] of Object.entries(data)) n.choices.forEach((c,i)=>{
+    if (c.next && data[c.next]) editor.addConnection(dfIdOf(id),dfIdOf(c.next),`output_${i+1}`,"input_1");
+  });
+  $("st-npc").textContent = currentNpc||"—";
   renderCode();
 }
-function dfIdOf(id) { return +Object.keys(idMap).find(k => idMap[k] === id); }
-
-/* 端口对齐：圆点留在库标准 DOM 里（node>outputs>output_N，库靠此结构找节点），
-   只测量第 i 条选项行中心，把纵坐标写进节点的 --y(i+1) CSS 变量，由 CSS 定位圆点。 */
-function placePorts(dfId, choices) {
-  const nodeEl = editor.precanvas.querySelector(`#node-${dfId}`);
-  if (!nodeEl) return;
-  const rows = [...nodeEl.querySelectorAll(".n-choice")];
-  rows.forEach((row, i) => {
-    const cy = row.offsetTop + row.offsetHeight / 2;
-    nodeEl.style.setProperty(`--y${i+1}`, cy + "px");
-  });
+function dfIdOf(id){ return +Object.keys(idMap).find(k=>idMap[k]===id); }
+function placePorts(dfId) {
+  const el = editor.precanvas.querySelector(`#node-${dfId}`);
+  if (!el) return;
+  [...el.querySelectorAll(".n-choice")].forEach((row,i)=>
+    el.style.setProperty(`--y${i+1}`, row.offsetTop+row.offsetHeight/2+"px"));
 }
 
-/* ===== 画布 → 模型：拉线/删线时同步 next。
-   注意：此版本 Drawflow 的 on 回调直接收到 detail 对象（不是 DOM 事件）。 ===== */
-function choiceIdx(cls) { return parseInt(String(cls).replace("output_",""),10)-1; }
-editor.on("connectionCreated", d => {
-  const from = idMap[d.output_id], to = idMap[d.input_id];
-  const i = choiceIdx(d.output_class);
-  if (from && to && DATA[from]?.choices[i]) {
-    DATA[from].choices[i].next = to;
-    renderCode(); persist();
-  }
+/* ===== 拉线/删线/删节点 ===== */
+const choiceIdx = c => parseInt(String(c).replace("output_",""),10)-1;
+editor.on("connectionCreated", d=>{
+  const from=idMap[d.output_id], to=idMap[d.input_id], i=choiceIdx(d.output_class);
+  if (from && to && cur()[from]?.choices[i]) { cur()[from].choices[i].next=to; renderCode(); persist(); }
 });
-editor.on("connectionRemoved", d => {
-  const from = idMap[d.output_id], i = choiceIdx(d.output_class);
-  if (from && DATA[from]?.choices[i]) { delete DATA[from].choices[i].next; renderCode(); persist(); }
+editor.on("connectionRemoved", d=>{
+  const from=idMap[d.output_id], i=choiceIdx(d.output_class);
+  if (from && cur()[from]?.choices[i]) { delete cur()[from].choices[i].next; renderCode(); persist(); }
+});
+editor.on("nodeRemoved", dfId=>{
+  const id=idMap[dfId]; if(!id) return;
+  delete cur()[id];
+  Object.values(cur()).forEach(n=>n.choices.forEach(c=>{ if(c.next===id) delete c.next; }));
+  renderGraph(); persist();
 });
 
-/* 节点删除（右键菜单删库自带节点；同步模型后重建保持一致）。回调参数直接是节点数字 id */
-editor.on("nodeRemoved", dfId => {
-  const id = idMap[dfId];
-  if (!id) return;
-  delete DATA[id];
-  Object.values(DATA).forEach(n => n.choices.forEach(c => { if (c.next === id) delete c.next; }));
-  renderGraph(DATA); persist();
+/* 单卡拖动结束 → 吸附 */
+editor.on("nodeMoved", dfId=>{
+  const d=liveData()[dfId];
+  if (snapOn) {
+    d.pos_x=snap(d.pos_x); d.pos_y=snap(d.pos_y);
+    const el=editor.precanvas.querySelector(`#node-${dfId}`);
+    if (el) { el.style.left=d.pos_x+"px"; el.style.top=d.pos_y+"px"; }
+    editor.updateConnectionNodes("node-"+dfId);
+  }
+  persist();
 });
-/* 拖动结束 / 视图平移结束：保存坐标与画布位置 */
-editor.on("nodeMoved", persist);
 editor.on("mouseUp", persist);
 
 /* ===== JSON 面板 ===== */
 function publicData() {
-  const out = {};
-  for (const [id, n] of Object.entries(DATA)) {
-    out[id] = { text:n.text, choices:n.choices.map(c => {
-      const o = { text:c.text }; if (c.next) o.next=c.next; return o;
-    })};
-  }
+  const out={};
+  for (const [id,n] of Object.entries(cur()))
+    out[id]={text:n.text,choices:n.choices.map(c=>{const o={text:c.text};if(c.next)o.next=c.next;return o;})};
   return out;
 }
-function renderCode() { $("code").value = JSON.stringify(publicData(), null, 2); }
-
-$("btn-copy").onclick = async () => {
-  try { await navigator.clipboard.writeText($("code").value); $("btn-copy").textContent="已复制";
-        setTimeout(()=>$("btn-copy").textContent="复制", 1200); }
-  catch(_) { $("code").select(); }
+function renderCode(){ $("code").value=JSON.stringify(publicData(),null,2); }
+$("btn-copy").onclick=async()=>{
+  try{ await navigator.clipboard.writeText($("code").value); $("btn-copy").textContent="已复制";
+       setTimeout(()=>$("btn-copy").textContent="复制",1200);}catch(_){ $("code").select(); }
 };
-$("btn-apply").onclick = () => {
-  try {
-    const obj = JSON.parse($("code").value);
-    // 补坐标（编辑 JSON 时不带 x/y），新节点自动阶梯摆放
-    let k = 0;
-    for (const [id, n] of Object.entries(obj)) {
-      if (n.x == null) { n.x = 60 + (k%3)*340; n.y = 90 + Math.floor(k/3)*220; }
-      if (!Array.isArray(n.choices)) n.choices = [];
+$("btn-apply").onclick=()=>{
+  try{
+    const obj=JSON.parse($("code").value); let k=0;
+    for (const [id,n] of Object.entries(obj)) {
+      if (n.x==null){ n.x=2*G_COARSE+(k%2)*COL; n.y=3*G_COARSE+Math.floor(k/2)*168; }
+      if (!Array.isArray(n.choices)) n.choices=[];
       k++;
     }
-    DATA = obj;
-    renderGraph(DATA);
-    persist();
-    flash("应用成功");
-  } catch (err) { alert("JSON 解析失败：" + err.message); }
+    DATA[currentNpc]=obj; renderGraph(); persist(); flash("应用成功");
+  }catch(err){ alert("JSON 解析失败："+err.message); }
 };
-function flash(msg) {
-  const b = $("btn-apply"); const old = b.textContent; b.textContent = msg;
-  setTimeout(()=>b.textContent=old, 1000);
-}
+function flash(m){ const b=$("btn-apply"),o=b.textContent; b.textContent=m; setTimeout(()=>b.textContent=o,1000); }
 
-/* ===== 左键空白拖框多选 =====
-   矩形与卡片都用屏幕坐标比较，天然不受缩放影响；卡片命中=矩形相交。
-   这一步只做"选中+高亮"，批量拖动下一步。 */
-const marquee = $("marquee");
-let multiSel = new Set();   // 选中的 drawflow 数字 id
-let dragBox = null;        // {x0,y0} 框选屏幕起点
-let group = null;          // 整组拖动：{members:Map(id,{x,y}), lastX,lastY}
-
-function isBlank(t) {
-  return t.classList && (t.classList.contains("drawflow") ||
-                         t.classList.contains("parent-drawflow"));
-}
-/* 活动数据路径（此版本 Drawflow）：editor.drawflow.drawflow.Home.data。
-   注意 editor.export() 是 JSON 深拷贝，只能读不能写，拖动必须改活动对象。 */
-const liveData = () => editor.drawflow.drawflow.Home.data;
-function nodePos(id) {
-  const d = liveData()[id];
-  return { x: d.pos_x, y: d.pos_y };
-}
-
-/* 显式清除库的单选/连线选中（空白点击时我们拦了库的 mousedown，需自己做它本该做的事） */
-function clearLibrarySelection() {
-  editor.precanvas.querySelectorAll(".drawflow-node.selected")
-    .forEach(el => el.classList.remove("selected"));
-  editor.node_selected = null;
-  const cs = editor.connection_selected;
-  if (cs) {
-    cs.classList.remove("selected");
-    try { editor.removeReouteConnectionSelected(); } catch (_) {}
-    editor.connection_selected = null;
+/* ===== 框选 / 整组拖动 ===== */
+const marquee=$("marquee");
+let multiSel=new Set(), dragBox=null, group=null;
+function isBlank(t){ return t.classList && (t.classList.contains("drawflow")||t.classList.contains("parent-drawflow")); }
+function clearLibrarySelection(){
+  editor.precanvas.querySelectorAll(".drawflow-node.selected").forEach(el=>el.classList.remove("selected"));
+  editor.node_selected=null;
+  if (editor.connection_selected){
+    editor.connection_selected.classList.remove("selected");
+    try{ editor.removeReouteConnectionSelected(); }catch(_){}
+    editor.connection_selected=null;
   }
 }
-
-/* 统一用 mouse 事件链（与拦截的 mousedown 同一条链，避免 pointer/mouse 混用导致抬起丢失）。
-   document 捕获：
-   - 空白左键：库收不到 → 自己做框选/点击清除选中
-   - 多选内的卡片左键：库收不到 → 整组由我们直接移动（不依赖库的领头卡时序）
-   - 其余（单选卡片/端口/连线/右键/中键）：全部放行给库 */
-document.addEventListener("mousedown", e => {
-  if (e.button !== 0) return;
-  if (isBlank(e.target)) {
+document.addEventListener("mousedown", e=>{
+  if (e.button!==0) return;
+  if (isBlank(e.target)){
     e.stopPropagation();
-    dragBox = { x0: e.clientX, y0: e.clientY };
-    marquee.style.display = "block";
-    Object.assign(marquee.style, { left:e.clientX+"px", top:e.clientY+"px",
-                                   width:"0px", height:"0px" });
+    dragBox={x0:e.clientX,y0:e.clientY};
+    marquee.style.display="block";
+    Object.assign(marquee.style,{left:e.clientX+"px",top:e.clientY+"px",width:"0px",height:"0px"});
     return;
   }
-  const nodeEl = e.target.closest?.(".drawflow-node");
-  if (nodeEl && multiSel.has(+nodeEl.id.slice(5))) {
-    // 整组拖动：拦截库，自己按屏幕位移移动所有选中卡（坐标=屏幕位移/zoom）。
-    // 增量式：保存每张卡【当前】位置 + 上一帧鼠标点，每帧只加本帧位移。
+  const nodeEl=e.target.closest?.(".drawflow-node");
+  if (nodeEl && multiSel.has(+nodeEl.id.slice(5))){
     e.stopPropagation();
-    const members = new Map();
-    multiSel.forEach(id => members.set(id, nodePos(id)));
-    group = { members, lastX: e.clientX, lastY: e.clientY };
+    const members=new Map();
+    multiSel.forEach(id=>members.set(id,nodePos(id)));
+    group={members,lastX:e.clientX,lastY:e.clientY};
     $("df").classList.add("grabbing");
   }
 }, true);
-
-window.addEventListener("mousemove", e => {
-  if (group) {
-    const zoom = editor.zoom;
-    // 屏幕上鼠标向右/向下为正 → 画布坐标也应增加
-    const stepX = (e.clientX - group.lastX) / zoom;
-    const stepY = (e.clientY - group.lastY) / zoom;
-    group.lastX = e.clientX; group.lastY = e.clientY;
-    group.members.forEach((p, id) => {
-      const d = liveData()[id];
-      d.pos_x = p.x + stepX; d.pos_y = p.y + stepY;
-      p.x = d.pos_x; p.y = d.pos_y;       // 基准推进到本帧，下一帧在此基础上累加
-      const el = editor.precanvas.querySelector(`#node-${id}`);
-      if (el) { el.style.left = d.pos_x + "px"; el.style.top = d.pos_y + "px"; }
-      editor.updateConnectionNodes(id);
+window.addEventListener("mousemove", e=>{
+  if (group){
+    const z=editor.zoom;
+    const sx=(e.clientX-group.lastX)/z, sy=(e.clientY-group.lastY)/z;
+    group.lastX=e.clientX; group.lastY=e.clientY;
+    group.members.forEach((p,id)=>{
+      const d=liveData()[id];
+      d.pos_x=p.x+sx; d.pos_y=p.y+sy; p.x=d.pos_x; p.y=d.pos_y;
+      const el=editor.precanvas.querySelector(`#node-${id}`);
+      if (el){ el.style.left=d.pos_x+"px"; el.style.top=d.pos_y+"px"; }
     });
-    return;
+    group.members.forEach((_p,id)=>editor.updateConnectionNodes("node-"+id));
+  } else if (dragBox){
+    Object.assign(marquee.style,{
+      left:Math.min(e.clientX,dragBox.x0)+"px", top:Math.min(e.clientY,dragBox.y0)+"px",
+      width:Math.abs(e.clientX-dragBox.x0)+"px", height:Math.abs(e.clientY-dragBox.y0)+"px"});
   }
-  if (!dragBox) return;
-  const x = Math.min(e.clientX, dragBox.x0), y = Math.min(e.clientY, dragBox.y0);
-  Object.assign(marquee.style,
-    { left:x+"px", top:y+"px",
-      width:Math.abs(e.clientX - dragBox.x0)+"px",
-      height:Math.abs(e.clientY - dragBox.y0)+"px" });
+  updateCoord(e.clientX,e.clientY);
 });
-
-function endPointer(e) {
-  // 整组拖动收尾
-  if (group) {
-    group = null;
-    $("df").classList.remove("grabbing");
-    persist();
-    return;
+window.addEventListener("mouseup", e=>{
+  if (group){
+    if (snapOn) group.members.forEach((_p,id)=>{
+      const d=liveData()[id];
+      d.pos_x=snap(d.pos_x); d.pos_y=snap(d.pos_y);
+      const el=editor.precanvas.querySelector(`#node-${id}`);
+      if (el){ el.style.left=d.pos_x+"px"; el.style.top=d.pos_y+"px"; }
+    });
+    group.members.forEach((_p,id)=>editor.updateConnectionNodes("node-"+id));
+    group=null; $("df").classList.remove("grabbing"); persist(); return;
   }
   if (!dragBox) return;
-  const x1 = Math.min(e.clientX, dragBox.x0), y1 = Math.min(e.clientY, dragBox.y0);
-  const x2 = Math.max(e.clientX, dragBox.x0), y2 = Math.max(e.clientY, dragBox.y0);
-  dragBox = null;
-  marquee.style.display = "none";
-
-  if (Math.max(x2 - x1, y2 - y1) < 3) {
-    // 空白【单击】：清除库单选 + 多选（替代库被拦掉的默认行为）
-    clearLibrarySelection();
-    clearMulti();
-    return;
-  }
-  // 框选：与卡片屏幕矩形相交即命中（切换式：按住 Ctrl 追加，普通拖框重新选）
-  const additive = e.ctrlKey || e.metaKey;
-  if (!additive) clearMulti();
-  editor.precanvas.querySelectorAll(".drawflow-node").forEach(el => {
-    const r = el.getBoundingClientRect();
-    const hit = r.left < x2 && r.right > x1 && r.top < y2 && r.bottom > y1;
-    const id = +el.id.slice(5);
-    if (hit) { multiSel.add(id); el.classList.add("multi-sel"); }
-    else if (!additive) { multiSel.delete(id); el.classList.remove("multi-sel"); }
+  const x1=Math.min(e.clientX,dragBox.x0), y1=Math.min(e.clientY,dragBox.y0);
+  const x2=Math.max(e.clientX,dragBox.x0), y2=Math.max(e.clientY,dragBox.y0);
+  dragBox=null; marquee.style.display="none";
+  if (Math.max(x2-x1,y2-y1)<3){ clearLibrarySelection(); clearMulti(); return; }
+  const add=e.ctrlKey||e.metaKey; if(!add) clearMulti();
+  editor.precanvas.querySelectorAll(".drawflow-node").forEach(el=>{
+    const r=el.getBoundingClientRect();
+    const hit=r.left<x2&&r.right>x1&&r.top<y2&&r.bottom>y1, id=+el.id.slice(5);
+    if (hit){ multiSel.add(id); el.classList.add("multi-sel"); }
+    else if(!add){ multiSel.delete(id); el.classList.remove("multi-sel"); }
   });
-}
-window.addEventListener("mouseup", endPointer);
-window.addEventListener("blur", () => { dragBox = null; group = null;
-  marquee.style.display = "none"; $("df").classList.remove("grabbing"); });
+});
+window.addEventListener("blur",()=>{ dragBox=null; group=null;
+  marquee.style.display="none"; $("df").classList.remove("grabbing"); });
+function clearMulti(){ multiSel.clear();
+  editor.precanvas.querySelectorAll(".multi-sel").forEach(el=>el.classList.remove("multi-sel")); }
+editor.on("nodeSelected", id=>{ if(!multiSel.has(+id)) clearMulti(); });
 
-function clearMulti() {
-  multiSel.clear();
-  editor.precanvas.querySelectorAll(".multi-sel")
-    .forEach(el => el.classList.remove("multi-sel"));
+/* ===== 状态栏 ===== */
+function updateCoord(cx,cy){
+  const r=$("df").getBoundingClientRect();
+  const wx=(cx-r.left-editor.canvas_x)/editor.zoom, wy=(cy-r.top-editor.canvas_y)/editor.zoom;
+  $("st-xy").textContent=`${Math.round(wx/gridSize)}, ${Math.round(wy/gridSize)}`;
 }
-/* 库选中一张卡：若不在当前多选中，清空多选，避免两套选中并存；在多选中则保留（供整组拖） */
-editor.on("nodeSelected", id => { if (!multiSel.has(+id)) clearMulti(); });
+function updateZoom(){ $("st-zoom").textContent=Math.round(editor.zoom*100)+"%"; }
+editor.on("zoom",updateZoom); editor.on("translate",updateZoom);
+$("chk-snap").onchange=e=>{ snapOn=e.target.checked; persist(); };
+$("sel-grid").onchange=e=>{ gridSize=+e.target.value;
+  $("df").style.setProperty("--grid",gridSize+"px"); renderGraph(); persist(); };
 
-/* ===== 控制台 API：不用截图即可用代码驱动画布 ===== */
-window.graph = {
-  help() {
-    console.log([
-      "graph.export()            查看当前 nodes JSON",
-      "graph.addNode('id', x, y, '台词')  新增卡片",
-      "graph.addChoice('greet', '选项文字', 'secret')  给卡片加选项并连线",
-      "graph.connect('greet', 1, 'secret')  第1个选项(0起)连到目标",
-      "graph.disconnect('greet', 1)        删除某选项的连线",
-      "graph.load({...})        用 JSON 整体替换并重建",
-      "graph.nodes()            查看 drawflow 原始序列化（含坐标）",
-      "graph.selection()        查看当前框选的卡片",
-    ].join("\n"));
-  },
-  export: () => publicData(),
-  selection: () => [...multiSel].map(id => idMap[id]),
-  nodes: () => editor.export(),
-  addNode(id, x=80, y=80, text="新节点") {
-    if (DATA[id]) return console.warn("已存在节点：" + id);
-    DATA[id] = { x, y, text, choices: [] };
-    renderGraph(DATA); persist();
-  },
-  addChoice(fromId, text, nextId) {
-    const c = { text }; if (nextId) c.next = nextId;
-    DATA[fromId].choices.push(c);
-    renderGraph(DATA); persist();
-  },
-  connect(fromId, choiceIdx, toId) {
-    if (!DATA[fromId].choices[choiceIdx]) DATA[fromId].choices[choiceIdx] = { text:"" };
-    DATA[fromId].choices[choiceIdx].next = toId;
-    renderGraph(DATA); persist();
-  },
-  disconnect(fromId, choiceIdx) {
-    delete DATA[fromId].choices[choiceIdx]?.next;
-    renderGraph(DATA); persist();
-  },
-  load(obj) { DATA = obj; renderGraph(DATA); persist(); },
+/* ===== NPC 画布切换 ===== */
+const npcSel=$("npc-select");
+function refreshNpcOptions(){
+  const ids=[...new Set([...Object.keys(SAMPLE),...Object.keys(DATA)])].sort();
+  npcSel.innerHTML=ids.map(id=>`<option value="${id}"${id===currentNpc?" selected":""}>${id}</option>`).join("");
+}
+npcSel.onchange=()=>{
+  persist();
+  currentNpc=npcSel.value;
+  if(!DATA[currentNpc]) DATA[currentNpc]={};
+  renderGraph(); applyView(savedView()); persist();
 };
 
-/* ===== 持久化：刷新/重进恢复上次样子；坐标直接取库 export 的 pos_x/pos_y，零计算 ===== */
-const LS_KEY = "drawflow_demo_v1";
+/* ===== 控制台 API ===== */
+window.graph={
+  help(){ console.log(["graph.npc / graph.use(id)","graph.export()","graph.addNode(id,'台词')",
+    "graph.addChoice/addConnect/connect/disconnect","graph.snap(true,28)","graph.load({...})"].join("\n")); },
+  get npc(){ return currentNpc; },
+  use(id){ npcSel.value=id; npcSel.onchange(); },
+  export:publicData,
+  selection:()=>[...multiSel].map(id=>idMap[id]),
+  nodes:()=>editor.export(),
+  addNode(id,text="新节点"){
+    if(cur()[id]) return console.warn("已存在："+id);
+    cur()[id]={x:snap(-editor.canvas_x/editor.zoom+2*G_COARSE),y:snap(-editor.canvas_y/editor.zoom+3*G_COARSE),text,choices:[]};
+    renderGraph(); persist();
+  },
+  addChoice(f,t,to){ const c={text:t}; if(to)c.next=to; cur()[f].choices.push(c); renderGraph(); persist(); },
+  connect(f,i,to){ if(!cur()[f].choices[i])cur()[f].choices[i]={text:""}; cur()[f].choices[i].next=to; renderGraph(); persist(); },
+  disconnect(f,i){ delete cur()[f].choices[i]?.next; renderGraph(); persist(); },
+  snap(on,g){ snapOn=!!on; if(g){gridSize=+g;$("sel-grid").value=g;$("df").style.setProperty("--grid",g+"px");} },
+  load(o){ DATA[currentNpc]=o; renderGraph(); persist(); },
+};
 
-function persist() {
-  // 把库维护的坐标写回模型（结构仍是我们的 nodes，坐标只是附带字段）
-  const exp = editor.export().drawflow.Home.data;
-  for (const [dfId, d] of Object.entries(exp)) {
-    const id = idMap[dfId];
-    if (id && DATA[id]) { DATA[id].x = d.pos_x; DATA[id].y = d.pos_y; }
+/* ===== 持久化（v2：按 NPC 隔离 + 各自视图 + 网格设置） ===== */
+const LS_KEY="drawflow_demo_v2";
+function persist(){
+  for (const [dfId,d] of Object.entries(editor.export().drawflow.Home.data)){
+    const id=idMap[dfId]; if(id && cur()[id]){ cur()[id].x=d.pos_x; cur()[id].y=d.pos_y; }
   }
-  localStorage.setItem(LS_KEY, JSON.stringify({
-    data: DATA,
-    view: { x: editor.canvas_x, y: editor.canvas_y, zoom: editor.zoom },
-  }));
+  const all=JSON.parse(localStorage.getItem(LS_KEY)||"{}");
+  all.data=DATA; all.currentNpc=currentNpc; all.views=all.views||{};
+  all.views[currentNpc]={x:editor.canvas_x,y:editor.canvas_y,zoom:editor.zoom};
+  all.snap=snapOn; all.grid=gridSize;
+  localStorage.setItem(LS_KEY,JSON.stringify(all));
 }
-function applyView(v) {
-  if (!v) return;
-  editor.canvas_x = v.x; editor.canvas_y = v.y; editor.zoom = v.zoom;
-  editor.precanvas.style.transform =
-    `translate(${v.x}px, ${v.y}px) scale(${v.zoom})`;
+function savedView(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)||"{}").views?.[currentNpc]; }catch(_){return null;} }
+function applyView(v){
+  if(!v){ editor.zoom_reset(); updateZoom(); return; }
+  editor.canvas_x=v.x??0; editor.canvas_y=v.y??0; editor.zoom=v.zoom??1;
+  editor.precanvas.style.transform=`translate(${editor.canvas_x}px, ${editor.canvas_y}px) scale(${editor.zoom})`;
+  updateZoom();
 }
-function loadSaved() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(LS_KEY));
-    if (saved?.data) {
-      DATA = saved.data;
-      renderGraph(DATA);
-      applyView(saved.view);
-      return true;
-    }
-  } catch (_) { /* 存档损坏则回退初始 */ }
-  return false;
-}
-function resetContent() {
-  if (!confirm("清除本地保存并回到空白画布？")) return;
+function resetAll(){
+  if(!confirm("清除本地保存并回到空白？")) return;
   localStorage.removeItem(LS_KEY);
-  DATA = {};
-  renderGraph(DATA);
-  editor.zoom_reset();
+  DATA={}; currentNpc=null; npcSel.value=""; refreshNpcOptions(); renderGraph(); editor.zoom_reset();
 }
 
-/* 工具栏：添加卡片（在当前视图中央偏移摆放，不手算复杂坐标） */
-let addSeq = 0;
-$("btn-add").onclick = () => {
-  const id = "node_" + (Object.keys(DATA).length + 1);
-  // 放在画布坐标系下、当前视野左上区域，轻微错开避免重叠
-  const x = Math.round(-editor.canvas_x / editor.zoom) + 120 + (addSeq % 5) * 26;
-  const y = Math.round(-editor.canvas_y / editor.zoom) + 120 + (addSeq % 5) * 26;
-  addSeq++;
-  graph.addNode(id, x, y, "新节点");
+/* ===== 工具栏 ===== */
+$("btn-add").onclick=()=>{ if(currentNpc) graph.addNode("node_"+(Object.keys(cur()).length+1)); };
+$("btn-sample").onclick=()=>{
+  DATA=structuredClone(SAMPLE);
+  const first=Object.keys(DATA)[0];
+  refreshNpcOptions(); currentNpc=first; npcSel.value=first;
+  renderGraph(); applyView(null); persist();
 };
-$("btn-sample").onclick = () => {
-  DATA = structuredClone(SAMPLE);
-  renderGraph(DATA); persist();
-};
-$("btn-clear").onclick = () => {
-  if (!confirm("清空画布？所有卡片、连线和本地保存都会删除。")) return;
-  DATA = {};
-  renderGraph(DATA); persist();
-};
-$("zin").onclick = () => editor.zoom_in();
-$("zout").onclick = () => editor.zoom_out();
-$("zreset").onclick = () => editor.zoom_reset();
-$("zreset-content").onclick = resetContent;
+$("btn-clear").onclick=()=>{ if(!currentNpc)return;
+  if(!confirm(`清空「${currentNpc}」画布？`))return;
+  DATA[currentNpc]={}; renderGraph(); persist(); };
+$("zin").onclick=()=>editor.zoom_in();
+$("zout").onclick=()=>editor.zoom_out();
+$("zreset").onclick=()=>editor.zoom_reset();
+$("zreset-content").onclick=resetAll;
 
-// 启动：有本地存档恢复上次样子（含坐标/视图），否则保持空白
-if (!loadSaved()) renderGraph(DATA);
+/* ===== 右侧编辑栏收纳（VS Code 抽屉，Ctrl+B） ===== */
+const panel = $("codepanel"), btnPanel = $("btn-toggle-panel");
+function setPanel(open) {
+  panel.classList.toggle("collapsed", !open);
+  btnPanel.classList.toggle("active", !open);
+  try { localStorage.setItem("drawflow_panel_open", open ? "1" : "0"); } catch(_) {}
+}
+btnPanel.onclick = () => setPanel(panel.classList.contains("collapsed"));
+window.addEventListener("keydown", e => {
+  if ((e.ctrlKey||e.metaKey) && (e.key==="b"||e.key==="B")) { e.preventDefault();
+    setPanel(panel.classList.contains("collapsed")); }
+});
+try { if (localStorage.getItem("drawflow_panel_open") === "0") setPanel(false); } catch(_) {}
 
+/* ===== 启动：恢复存档；否则空白 ===== */
+(function init(){
+  refreshNpcOptions();
+  let s=null; try{ s=JSON.parse(localStorage.getItem(LS_KEY)); }catch(_){}
+  if (s?.data){
+    DATA=s.data; snapOn=s.snap!==false; gridSize=s.grid||G_COARSE;
+    $("chk-snap").checked=snapOn; $("sel-grid").value=gridSize;
+    $("df").style.setProperty("--grid",gridSize+"px");
+    currentNpc=s.currentNpc && DATA[s.currentNpc] ? s.currentNpc : Object.keys(DATA)[0];
+    refreshNpcOptions(); npcSel.value=currentNpc||"";
+    renderGraph(); if(currentNpc) applyView(savedView());
+  } else renderGraph();
+  updateZoom();
+})();
 </script>
 </body>
 </html>
