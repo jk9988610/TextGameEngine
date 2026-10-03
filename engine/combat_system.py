@@ -174,6 +174,8 @@ class CombatSystem:
         if battle["enemy_hp"] <= 0:
             response["log"].append(f"【{enemy['name']}】被你打倒了！")
             self._bus.publish("COMBAT_DEATH", dead=enemy["id"])
+            # 语义干净的击杀事件（玩家死亡不发），供事件规则做"击杀任务/掉落"
+            self._bus.publish("ENEMY_KILLED", enemy_id=enemy["id"])
             # 🆕 关键：标记永久死亡 → 以后再进洞穴不会复活了
             self._state.setdefault("killed_enemies", [])
             if enemy["id"] not in self._state["killed_enemies"]:

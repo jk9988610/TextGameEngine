@@ -5,7 +5,28 @@
         绝不自动进入任何模式 —— 刷新后模式选择层始终保持显示。
    ========================================================================== */
 
+async function loadGameInfo() {
+    /**拉取游戏标题/简介（game_config.json 可配），填到模式层与顶栏；失败保持默认文案 */
+    try {
+        const res = await fetch('/api/game-info');
+        const info = await res.json();
+        if (info.title) {
+            document.title = info.title;
+            const modeTitle = document.getElementById('game-title-mode');
+            const headerTitle = document.querySelector('header h1');
+            if (modeTitle) modeTitle.textContent = info.title;
+            if (headerTitle) headerTitle.textContent = info.title;
+        }
+        const introEl = document.getElementById('game-intro');
+        if (introEl) {
+            introEl.textContent = info.intro || '';
+            introEl.style.display = info.intro ? '' : 'none';
+        }
+    } catch (e) { /* 后端没起来时保留 HTML 默认文案 */ }
+}
+
 async function initApp() {
+    await loadGameInfo();
     try {
         const res = await fetch('/api/auth/me');
         const data = await res.json();

@@ -20,6 +20,7 @@ M5 起，对话选项/事件规则的"条件"和"效果"全部走这里，引擎
   {"type": "gold", "amount": n}
   {"type": "teleport", "scene": "id"}
   {"type": "start_combat", "enemy": "id"}
+  {"type": "unlock", "scene": "id", "exit": "id"}   解锁某场景的出口锁
 
 依赖通过构造函数注入，不 import app.py。
 """
@@ -71,6 +72,10 @@ class EffectExecutor:
         self._items = item_system
         self._combat = combat_system
 
+    def condition_matches(self, cond: Optional[Dict[str, Any]]) -> bool:
+        """对当前玩家状态求值世界条件（供事件规则的 when 使用）。"""
+        return condition_matches(self._state, cond)
+
     def apply(self, effects: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         执行一组效果。
@@ -103,6 +108,7 @@ class EffectExecutor:
             "gold": self._eff_gold,
             "teleport": self._eff_teleport,
             "start_combat": self._eff_start_combat,
+            "unlock": self._eff_unlock,
         }
 
     def _eff_set_flag(self, eff: Dict[str, Any]):
@@ -185,3 +191,12 @@ class EffectExecutor:
             return "战斗系统未启用", False
         result = self._combat.start_battle(enemy_id)
         return result.get("message", ""), bool(result.get("success"))
+
+    def _eff_unlock(self, eff: Dict[str, Any]):
+        """解锁某场景的出口锁（拿钥匙开门的声明式效果）；无提示文本。"""
+        scene_id = eff.get("scene", "")
+        exit_id = eff.get("exit", "")
+        locks = self._state.get("scene_lock_states", {}).get(scene_id)
+        if locks is not None and exit_id in locks:
+            locks[exit_id] = False
+        return "", False

@@ -1,6 +1,10 @@
 {
+  "game_title": "酒馆奇遇",
+  "game_intro": "从一间昏暗的酒馆开始，探索森林、洞穴与药水店的点击式文字冒险。",
   "initial_scene": "tavern",
-  "initial_inventory": ["rusty_sword"],
+  "initial_inventory": [
+    "rusty_sword"
+  ],
   "initial_gold": 0,
   "player": {
     "hp": 50,
@@ -16,13 +20,19 @@
   },
   "event_rules": [
     {
+      "id": "rusty_key_unlocks_cave",
+      "label": "在森林捡到锈钥匙 → 解锁洞穴门",
       "on": "ITEM_TAKEN",
       "if": {
         "item_id": "rusty_key",
         "from_scene": "forest"
       },
       "do": [
-        { "type": "unlock", "scene": "forest", "exit": "cave" }
+        {
+          "type": "unlock",
+          "scene": "forest",
+          "exit": "cave"
+        }
       ]
     }
   ]

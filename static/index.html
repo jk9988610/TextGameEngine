@@ -9,7 +9,8 @@
 <body>
     <!-- 模式选择覆盖层（首次进入显示，选完隐藏） -->
     <div id="mode-overlay">
-        <h2>文字游戏引擎</h2>
+        <h2 id="game-title-mode">文字游戏引擎</h2>
+        <p class="game-intro" id="game-intro" style="display:none;"></p>
         <p class="mode-subtitle">选择进入模式</p>
         <div class="mode-buttons">
             <div class="mode-card" onclick="chooseMode('offline')">

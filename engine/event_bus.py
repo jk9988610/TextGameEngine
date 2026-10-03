@@ -43,4 +43,6 @@ class GameEvents:
     ITEM_USED = "ITEM_USED"           # 玩家使用某个物品
     NPC_TALK = "NPC_TALK"             # 玩家和NPC对话（预留给对话系统）
     COMBAT_DAMAGE = "COMBAT_DAMAGE"   # 战斗伤害结算（预留给战斗系统）
-    COMBAT_DEATH = "COMBAT_DEATH"     # 战斗死亡（预留给战斗系统）
+    COMBAT_DEATH = "COMBAT_DEATH"     # 战斗死亡（dead=enemy_id 或 "player"）
+    ENEMY_KILLED = "ENEMY_KILLED"     # 敌人被击杀（仅敌人死亡时发，参数 enemy_id）
+    ITEM_BOUGHT = "ITEM_BOUGHT"       # 从商店购买（参数 item_id/price/from_scene）

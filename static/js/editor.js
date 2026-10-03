@@ -3,8 +3,8 @@
    纯原生 JS，不依赖游戏页任何脚本；所有写操作走 /api/editor/* 并由后端校验。
    ========================================================================== */
 
-let DATA = { scenes: {}, items: {}, enemies: {}, npcs: {}, initial_scene: '' };
-let tab = 'scenes';          // 当前页签：scenes | items | enemies | npcs
+let DATA = { scenes: {}, items: {}, enemies: {}, npcs: {}, config: { event_rules: [] }, initial_scene: '' };
+let tab = 'scenes';          // 当前页签：scenes | items | enemies | npcs | events
 let selectedId = null;       // 正在编辑的对象 id（新建态为 null）
 let isNew = false;
 
@@ -69,12 +69,22 @@ function bindStaticEvents() {
     $('npc-cancel').addEventListener('click', showEmpty);
     $('npc-add-rule').addEventListener('click', () => addRuleRow(null));
     $('npc-add-node').addEventListener('click', () => addNodeCard('', { text: '', choices: [] }));
+    $('btn-config').addEventListener('click', openConfig);
+    $('config-close').addEventListener('click', showEmpty);
+    $('config-save').addEventListener('click', saveConfig);
+    $('event-save').addEventListener('click', saveEventRule);
+    $('event-delete').addEventListener('click', deleteEventRule);
+    $('event-cancel').addEventListener('click', showEmpty);
+    $('event-add-effect').addEventListener('click',
+        () => addEffectRow($('event-effects'), null));
+    $('event-on').addEventListener('change', (e) => renderEventArgs(e.target.value, {}));
 }
 
 function switchTab(next) {
     tab = next;
     selectedId = null;
     isNew = false;
+    document.body.classList.remove('config-open');
     document.querySelectorAll('.ed-tab').forEach(b =>
         b.classList.toggle('active', b.dataset.tab === tab));
     renderList();
@@ -84,6 +94,22 @@ function switchTab(next) {
 function renderList() {
     const listEl = $('ed-list');
     listEl.innerHTML = '';
+    // 事件规则是 config.event_rules 数组，单独渲染
+    if (tab === 'events') {
+        const rules = (DATA.config && DATA.config.event_rules) || [];
+        for (const rule of rules) {
+            const row = document.createElement('div');
+            row.className = 'ed-list-item' + (rule.id === selectedId ? ' selected' : '');
+            const name = rule.label || rule.id;
+            row.innerHTML = `<div class="li-name"></div><div class="li-id"></div>`;
+            row.querySelector('.li-name').textContent = name;
+            row.querySelector('.li-id').textContent =
+                `${rule.id} · ${(TRIGGER_OPTIONS.find(o => o.v === rule.on) || {}).label || rule.on}`;
+            row.addEventListener('click', () => showForm('events', rule.id));
+            listEl.appendChild(row);
+        }
+        return;
+    }
     const coll = DATA[tab];
     for (const id of sortedKeys(coll)) {
         const row = document.createElement('div');
@@ -100,11 +126,14 @@ function renderList() {
 function showEmpty() {
     selectedId = null;
     isNew = false;
+    document.body.classList.remove('config-open');
     $('ed-empty').classList.remove('hidden');
     $('form-scene').classList.add('hidden');
     $('form-item').classList.add('hidden');
     $('form-enemy').classList.add('hidden');
     $('form-npc').classList.add('hidden');
+    $('form-event').classList.add('hidden');
+    $('form-config').classList.add('hidden');
     renderList();
 }
 
@@ -118,6 +147,7 @@ function onNew() {
         $('form-item').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
         $('form-npc').classList.add('hidden');
+        $('form-event').classList.add('hidden');
         $('scene-form-title').textContent = '新建地点';
         $('scene-id').value = '';
         $('scene-id').disabled = false;
@@ -132,6 +162,7 @@ function onNew() {
         $('form-scene').classList.add('hidden');
         $('form-item').classList.add('hidden');
         $('form-npc').classList.add('hidden');
+        $('form-event').classList.add('hidden');
         $('enemy-form-title').textContent = '新建敌人';
         $('enemy-id').value = '';
         $('enemy-id').disabled = false;
@@ -147,12 +178,21 @@ function onNew() {
         $('form-npc').classList.remove('hidden');
         $('form-scene').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
+        $('form-item').classList.add('hidden');
         renderNpcForm(null);
+    } else if (tab === 'events') {
+        $('form-event').classList.remove('hidden');
+        $('form-scene').classList.add('hidden');
+        $('form-enemy').classList.add('hidden');
+        $('form-item').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
+        renderEventForm(null);
     } else {
         $('form-item').classList.remove('hidden');
         $('form-scene').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
         $('form-npc').classList.add('hidden');
+        $('form-event').classList.add('hidden');
         $('item-form-title').textContent = '新建物品';
         $('item-id').value = '';
         $('item-id').disabled = false;
@@ -182,6 +222,7 @@ function showForm(kind, id) {
         $('form-item').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
         $('form-npc').classList.add('hidden');
+        $('form-event').classList.add('hidden');
         $('form-scene').classList.remove('hidden');
         $('scene-form-title').textContent = '编辑地点';
         $('scene-id').value = s.id;
@@ -202,6 +243,7 @@ function showForm(kind, id) {
         $('form-scene').classList.add('hidden');
         $('form-item').classList.add('hidden');
         $('form-npc').classList.add('hidden');
+        $('form-event').classList.add('hidden');
         $('form-enemy').classList.remove('hidden');
         $('enemy-form-title').textContent = '编辑敌人';
         $('enemy-id').value = em.id;
@@ -220,14 +262,25 @@ function showForm(kind, id) {
         $('form-scene').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
         $('form-item').classList.add('hidden');
+        $('form-event').classList.add('hidden');
         $('form-npc').classList.remove('hidden');
         renderNpcForm(npc);
+    } else if (kind === 'events') {
+        const rule = (DATA.config.event_rules || []).find(r => r.id === id);
+        if (!rule) return;
+        $('form-scene').classList.add('hidden');
+        $('form-enemy').classList.add('hidden');
+        $('form-item').classList.add('hidden');
+        $('form-npc').classList.add('hidden');
+        $('form-event').classList.remove('hidden');
+        renderEventForm(rule);
     } else {
         const it = DATA.items[id];
         if (!it) return;
         $('form-scene').classList.add('hidden');
         $('form-enemy').classList.add('hidden');
         $('form-npc').classList.add('hidden');
+        $('form-event').classList.add('hidden');
         $('form-item').classList.remove('hidden');
         $('item-form-title').textContent = '编辑物品';
         $('item-id').value = it.id;
@@ -489,6 +542,7 @@ const EFFECT_OPTIONS = [
     { v: 'gold', label: '增加金币' },
     { v: 'teleport', label: '传送到' },
     { v: 'start_combat', label: '开始战斗' },
+    { v: 'unlock', label: '解锁出口' },
 ];
 // 各类型参数输入框的形态：list 为 datalist id，ph 为占位提示
 const COND_PARAM_CFG = {
@@ -691,18 +745,66 @@ function addEffectRow(box, effect) {
     const row = ce('div', 'npc-effect-row');
     const typeSel = ce('select', 'ne-type');
     typeSel.innerHTML = optionsHtml(EFFECT_OPTIONS, eff.type || '');
-    const param = ce('input', 'ne-param');
-    configureParamInput(param, EFFECT_PARAM_CFG[eff.type]);
-    param.value = eff ? (eff.item || eff.flag || eff.scene || eff.enemy ||
-        (eff.amount != null ? eff.amount : '')) : '';
-    typeSel.addEventListener('change', () => {
-        configureParamInput(param, EFFECT_PARAM_CFG[typeSel.value]);
-    });
+    const paramsBox = ce('span', 'ne-params');
     const del = ce('button', 'ed-btn mini danger', '删');
     del.type = 'button';
     del.addEventListener('click', () => row.remove());
-    row.append(typeSel, param, del);
+    typeSel.addEventListener('change', () => renderEffectParams(typeSel, paramsBox, {}));
+    row.append(typeSel, paramsBox, del);
+    renderEffectParams(typeSel, paramsBox, eff);
     box.appendChild(row);
+}
+
+function refOptionsHtml(coll, selected, withEmpty, emptyLabel) {
+    let html = withEmpty ? `<option value="">${emptyLabel || '（不限）'}</option>` : '';
+    for (const id of sortedKeys(coll || {})) {
+        const name = coll[id].name || id;
+        html += `<option value="${id}"${id === selected ? ' selected' : ''}>${name}（${id}）</option>`;
+    }
+    return html;
+}
+
+function renderEffectParams(typeSel, paramsBox, eff) {
+    /**按效果类型渲染参数区：unlock 为「地点+出口」两个联动下拉，其余为单值输入 */
+    const t = typeSel.value;
+    paramsBox.innerHTML = '';
+    if (!t) return;
+
+    if (t === 'unlock') {
+        const sceneSel = ce('select', 'ne-scene');
+        sceneSel.innerHTML = refOptionsHtml(DATA.scenes, eff.scene, false);
+        const exitSel = ce('select', 'ne-exit');
+        const rebuildExits = (preselect) => {
+            const sc = DATA.scenes[sceneSel.value];
+            exitSel.innerHTML = (sc ? (sc.exits || []) : [])
+                .map(x => `<option value="${x}"${x === preselect ? ' selected' : ''}>${
+                    (DATA.scenes[x] || {}).name || x}</option>`).join('');
+        };
+        sceneSel.addEventListener('change', () => rebuildExits(null));
+        paramsBox.append(sceneSel, exitSel);
+        rebuildExits(eff.exit || null);
+        return;
+    }
+
+    const param = ce('input', 'ne-param');
+    configureParamInput(param, EFFECT_PARAM_CFG[t]);
+    param.value = eff ? (eff.item || eff.flag || eff.scene || eff.enemy ||
+        (eff.amount != null ? eff.amount : '')) : '';
+    paramsBox.appendChild(param);
+}
+
+function collectEffectFromRow(row) {
+    const t = row.querySelector('.ne-type').value;
+    if (!t) return null;
+    if (t === 'unlock') {
+        return {
+            type: 'unlock',
+            scene: row.querySelector('.ne-scene').value,
+            exit: row.querySelector('.ne-exit').value,
+        };
+    }
+    const raw = row.querySelector('.ne-param').value.trim();
+    return buildEffect(t, raw);
 }
 
 function buildCond(t, raw) {
@@ -745,8 +847,8 @@ function collectNpcPayload() {
             if (t) choice.if = buildCond(t, p);
             const effects = [];
             row.querySelectorAll('.nc-effects .npc-effect-row').forEach(er => {
-                const et = er.querySelector('.ne-type').value;
-                if (et) effects.push(buildEffect(et, er.querySelector('.ne-param').value.trim()));
+                const collected = collectEffectFromRow(er);
+                if (collected) effects.push(collected);
             });
             if (effects.length) choice.effects = effects;
             choices.push(choice);
@@ -788,6 +890,214 @@ async function deleteNpc() {
     const data = await res.json();
     if (!data.success) { toast(data.message, 'error'); return; }
     showEmpty();
+    await loadData();
+    toast(data.message, 'success');
+}
+
+// ---------- 事件规则编辑 ----------
+const TRIGGER_OPTIONS = [
+    { v: 'ITEM_TAKEN', label: '拾取物品时' },
+    { v: 'ITEM_USED', label: '使用物品时' },
+    { v: 'ITEM_BOUGHT', label: '购买物品时' },
+    { v: 'ENEMY_KILLED', label: '击败敌人时' },
+    { v: 'SCENE_ENTER', label: '进入地点时' },
+    { v: 'SCENE_LEAVE', label: '离开地点时' },
+    { v: 'NPC_TALK', label: '对话到达节点时' },
+];
+// 触发器 → 事件参数行：field 是后端 kwargs 名，coll 是引用集合类型，optional 可留空
+const TRIGGER_ARG_SPECS = {
+    ITEM_TAKEN: [
+        { field: 'item_id', coll: 'items', label: '物品', optional: false },
+        { field: 'from_scene', coll: 'scenes', label: '地点', optional: true },
+    ],
+    ITEM_USED: [{ field: 'item_id', coll: 'items', label: '物品', optional: false }],
+    ITEM_BOUGHT: [
+        { field: 'item_id', coll: 'items', label: '物品', optional: false },
+        { field: 'from_scene', coll: 'scenes', label: '地点', optional: true },
+    ],
+    ENEMY_KILLED: [{ field: 'enemy_id', coll: 'enemies', label: '敌人', optional: false }],
+    SCENE_ENTER: [{ field: 'scene_id', coll: 'scenes', label: '地点', optional: false }],
+    SCENE_LEAVE: [{ field: 'scene_id', coll: 'scenes', label: '地点', optional: false }],
+    NPC_TALK: [
+        { field: 'npc_id', coll: 'npcs', label: 'NPC', optional: false },
+        { field: 'node_id', coll: 'nodes', label: '对话节点', optional: true },
+    ],
+};
+
+function renderEventForm(rule) {
+    $('event-form-title').textContent = rule ? '编辑事件规则' : '新建事件规则';
+    $('event-id').value = rule ? rule.id : '';
+    $('event-id').disabled = !!rule;
+    $('event-label').value = rule ? (rule.label || '') : '';
+    const onSel = $('event-on');
+    onSel.innerHTML = optionsHtml(TRIGGER_OPTIONS, rule ? rule.on : 'ITEM_TAKEN');
+    renderEventArgs(onSel.value, rule ? (rule.if || {}) : {});
+    renderEventWhen(rule ? rule.when : null);
+    const box = $('event-effects');
+    box.innerHTML = '';
+    (rule ? rule.do || [] : []).forEach(eff => addEffectRow(box, eff));
+    if (!rule) addEffectRow(box, null);
+    $('event-delete').classList.toggle('hidden', !rule);
+}
+
+function renderEventArgs(on, values) {
+    const box = $('event-args');
+    box.innerHTML = '';
+    (TRIGGER_ARG_SPECS[on] || []).forEach(spec => {
+        const row = ce('label', 'event-arg-row');
+        row.append(`${spec.label}${spec.optional ? '（可空）' : ''}`);
+        const sel = ce('select', 'ev-arg');
+        sel.dataset.field = spec.coll === 'nodes' ? 'node_id' : spec.field;
+        sel.dataset.coll = spec.coll;
+        const fill = (preselect) => {
+            if (spec.coll === 'nodes') {
+                const npcId = box.querySelector('.ev-arg[data-field="npc_id"]')?.value;
+                const nodes = (DATA.npcs[npcId] || {}).nodes || {};
+                sel.innerHTML = nodeOptionsHtml(nodes, preselect, spec.optional);
+            } else {
+                sel.innerHTML = refOptionsHtml(DATA[spec.coll], preselect, spec.optional, '任意地点');
+            }
+        };
+        fill(values[spec.field] || null);
+        row.appendChild(sel);
+        box.appendChild(row);
+    });
+    // NPC_TALK：NPC 切换时重建节点下拉（事件委托一次）
+    box.onchange = (e) => {
+        if (e.target.dataset && e.target.dataset.field === 'npc_id') {
+            const nodeSel = box.querySelector('.ev-arg[data-field="node_id"]');
+            if (nodeSel) nodeSel.innerHTML =
+                nodeOptionsHtml((DATA.npcs[e.target.value] || {}).nodes || {}, null, true);
+        }
+    };
+}
+
+function nodeOptionsHtml(nodes, selected, withEmpty) {
+    let html = withEmpty ? '<option value="">（任意节点）</option>' : '';
+    for (const nid of sortedKeys(nodes)) {
+        html += `<option value="${nid}"${nid === selected ? ' selected' : ''}>${nid}</option>`;
+    }
+    return html;
+}
+
+function renderEventWhen(when) {
+    const box = $('event-when');
+    box.innerHTML = '';
+    const t = condTypeOf(when);
+    const typeSel = ce('select', 'ew-cond-type');
+    typeSel.innerHTML = optionsHtml(COND_OPTIONS, t);
+    const param = ce('input', 'ew-cond-param');
+    configureParamInput(param, COND_PARAM_CFG[t]);
+    param.value = when && t ? when[t] : '';
+    typeSel.addEventListener('change', () => configureParamInput(param, COND_PARAM_CFG[typeSel.value]));
+    box.append(typeSel, param);
+}
+
+function collectEventPayload() {
+    const rule = {
+        id: $('event-id').value.trim(),
+        label: $('event-label').value,
+        on: $('event-on').value,
+    };
+    const args = {};
+    document.querySelectorAll('#event-args .ev-arg').forEach(sel => {
+        if (sel.value) args[sel.dataset.field] = sel.value;
+    });
+    if (Object.keys(args).length) rule.if = args;
+    const wt = document.querySelector('#event-when .ew-cond-type').value;
+    const wp = document.querySelector('#event-when .ew-cond-param').value.trim();
+    if (wt) rule.when = buildCond(wt, wp);
+    const doList = [];
+    document.querySelectorAll('#event-effects .npc-effect-row').forEach(row => {
+        const eff = collectEffectFromRow(row);
+        if (eff) doList.push(eff);
+    });
+    rule.do = doList;
+    return rule;
+}
+
+async function saveEventRule() {
+    const payload = collectEventPayload();
+    const res = await fetch('/api/editor/event-rule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.success) { toast(data.message, 'error'); return; }
+    selectedId = data.id;
+    isNew = false;
+    await loadData();
+    toast(data.message, 'success');
+}
+
+async function deleteEventRule() {
+    const rule = (DATA.config.event_rules || []).find(r => r.id === selectedId);
+    if (!rule) return;
+    if (!confirm(`确认删除事件规则【${rule.label || selectedId}】？`)) return;
+    const res = await fetch('/api/editor/event-rule/' + encodeURIComponent(selectedId),
+        { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) { toast(data.message, 'error'); return; }
+    showEmpty();
+    await loadData();
+    toast(data.message, 'success');
+}
+
+// ---------- 游戏设置（开局配置） ----------
+function openConfig() {
+    const cfg = DATA.config || {};
+    document.body.classList.add('config-open');
+    selectedId = null;
+    renderList();
+    $('ed-empty').classList.add('hidden');
+    document.querySelectorAll('.ed-form').forEach(f => f.classList.add('hidden'));
+    $('form-config').classList.remove('hidden');
+
+    $('config-title').value = cfg.game_title || '';
+    $('config-intro').value = cfg.game_intro || '';
+    const sceneSel = $('config-scene');
+    sceneSel.innerHTML = refOptionsHtml(DATA.scenes, cfg.initial_scene, false);
+    const box = $('config-items');
+    box.innerHTML = '';
+    const initial = cfg.initial_inventory || [];
+    for (const iid of sortedKeys(DATA.items)) {
+        const label = document.createElement('label');
+        label.innerHTML =
+            `<input type="checkbox" class="cfg-item-cb" data-id="${iid}"` +
+            `${initial.includes(iid) ? ' checked' : ''}>` +
+            `<span></span><span class="li-sub">${iid}</span>`;
+        label.querySelector('span').textContent = DATA.items[iid].name || iid;
+        box.appendChild(label);
+    }
+    $('config-gold').value = cfg.initial_gold != null ? cfg.initial_gold : 0;
+    const p = cfg.player || {};
+    $('config-hp').value = p.hp != null ? p.hp : 50;
+    $('config-attack').value = p.attack != null ? p.attack : 5;
+    $('config-defense').value = p.defense != null ? p.defense : 2;
+}
+
+async function saveConfig() {
+    const payload = {
+        game_title: $('config-title').value,
+        game_intro: $('config-intro').value,
+        initial_scene: $('config-scene').value,
+        initial_inventory: [...document.querySelectorAll('.cfg-item-cb:checked')]
+            .map(cb => cb.dataset.id),
+        initial_gold: parseInt($('config-gold').value, 10),
+        player: {
+            hp: parseInt($('config-hp').value, 10),
+            attack: parseInt($('config-attack').value, 10),
+            defense: parseInt($('config-defense').value, 10),
+        },
+    };
+    const res = await fetch('/api/editor/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.success) { toast(data.message, 'error'); return; }
     await loadData();
     toast(data.message, 'success');
 }

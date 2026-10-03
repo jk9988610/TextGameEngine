@@ -52,6 +52,10 @@ class SaveManager:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._init_schema()
 
+    def update_defaults(self, new_defaults: Dict[str, Any]) -> None:
+        """开局配置在编辑器里修改后，刷新老存档补全用的默认值集合"""
+        self._defaults = new_defaults
+
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row

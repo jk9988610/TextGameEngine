@@ -147,6 +147,16 @@ def serve_index():
     return redirect('/static/index.html')
 
 
+@app.route('/api/game-info', methods=['GET'])
+def game_info():
+    """游戏标题/简介（无需会话，模式选择层和页面顶栏启动时拉取）"""
+    cfg = GAME_DATA.get("config") or {}
+    return jsonify({
+        "title": cfg.get("game_title", "文字游戏引擎"),
+        "intro": cfg.get("game_intro", ""),
+    })
+
+
 @app.route('/api/state', methods=['GET'])
 def get_state():
     e = _get_engines()
@@ -520,6 +530,7 @@ def editor_get_data():
         "items": GAME_DATA["items"],
         "enemies": GAME_DATA["enemies"],
         "npcs": GAME_DATA["npcs"],
+        "config": GAME_DATA["config"],
         "initial_scene": (GAME_DATA.get("config") or {}).get("initial_scene", ""),
     })
 
@@ -624,6 +635,43 @@ def editor_delete_npc(npc_id):
         GAME_DATA["npcs"], npc_id,
         live_dialogue_ids=SM.live_dialogue_npcs())
     return result
+
+
+@app.route('/api/editor/config', methods=['POST'])
+def editor_save_config():
+    """保存游戏开局配置（标题/简介/初始场景/背包/金币/玩家属性）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    payload = request.json or {}
+    result = EDITOR.upsert_config(
+        GAME_DATA["config"], GAME_DATA["scenes"], GAME_DATA["items"], payload)
+    if result.get("success"):
+        # 刷新老存档 normalize 用的默认值（新会话/reset 直接读 config，不受影响）
+        SM_SAVE.update_defaults(SM.initial_state_defaults())
+    return result
+
+
+@app.route('/api/editor/event-rule', methods=['POST'])
+def editor_upsert_event_rule():
+    """新建/更新一条事件规则"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    payload = request.json or {}
+    result = EDITOR.upsert_event_rule(
+        GAME_DATA["config"], GAME_DATA["scenes"], GAME_DATA["items"],
+        GAME_DATA["enemies"], GAME_DATA["npcs"], payload)
+    return result
+
+
+@app.route('/api/editor/event-rule/<rule_id>', methods=['DELETE'])
+def editor_delete_event_rule(rule_id):
+    """删除一条事件规则"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    return EDITOR.delete_event_rule(GAME_DATA["config"], rule_id)
 
 
 # ============================================================

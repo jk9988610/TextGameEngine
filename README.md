@@ -59,29 +59,40 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 | `items.json` | 普通物品；`is_weapon+damage` 武器；`usable+heal` 消耗品；`currency_value` 货币（拾取即折算金币，不进背包） |
 | `enemies.json` | `hp/attack/defense/reward_items/reward_gold`（金币直接入账，物品掉地上需拾取） |
 | `npc_dialogues.json` | `greeting` + `greeting_rules:[{if,node}]` 起点；`nodes` 节点树；选项可挂 `if` 条件与 `effects` 效果 |
-| `game_config.json` | 一切初始值；`event_rules` 是声明式事件规则 |
+| `game_config.json` | 一切初始值：游戏标题/简介、初始场景/背包/金币/玩家属性；`event_rules` 事件规则 |
 
 **条件**（effects.py）：`{flag}` / `{has_item}` / `{enemy_killed}` / `{gold_gte}`。
-**效果**：`set_flag` / `give_item` / `remove_item` / `heal` / `max_hp` / `gold` / `teleport` / `start_combat`。
+**效果**：`set_flag` / `give_item` / `remove_item` / `heal` / `max_hp` / `gold` / `teleport` / `start_combat` / `unlock`（对话选项和事件规则共用同一效果库）。
 玩家状态里的 `flags: {}` 是通用剧情标志，reset 清空，老存档读档自动补全。
+
+**事件规则**（config.event_rules，编辑器「事件」页签）：
+`{id, label, on, if, when?, do}`。
+- `on` 触发器 7 类：`ITEM_TAKEN` / `ITEM_USED` / `ITEM_BOUGHT` / `ENEMY_KILLED` /
+  `SCENE_ENTER` / `SCENE_LEAVE` / `NPC_TALK`
+- `if` 事件参数全等过滤（如指定 item_id/scene_id/enemy_id/npc_id+node_id；地点类留空=任意地点）
+- `when` 可选，世界状态条件（同上条件库）；和 `if` 是 AND
+- ⚠️ **规则在游戏会话创建时装配一次，编辑器改规则只对新开游戏生效（reset 不重建规则，
+  要新开会话）**；编辑器保存时也有此提示。控制台 `add_item` 发的 ITEM_TAKEN 带
+  `from_scene="__console__"`，不会命中限定场景的拾取规则——这是特性不是 bug。
 
 战斗公式：玩家命中 = 武器 damage − 敌防；敌人反击 = max(1, 敌攻 − 玩家防)。
 （注意：玩家自身的 attack 属性当前不参与命中，别按它算预期伤害。）
 
-里程碑：M1 引擎去游戏化 → M2 地点/物品编辑器 → M3 金币/商店/喝药 → M4 敌人编辑 → M5 NPC/对话/条件效果。
-后续规划：M6 事件触发器扩展 + 开局配置向导；M7 战斗深化（技能/防御/逃跑/多敌人/经验）、限量商店、任务日志 UI。
+里程碑：M1 引擎去游戏化 → M2 地点/物品编辑器 → M3 金币/商店/喝药 → M4 敌人编辑 →
+M5 NPC/对话/条件效果 → M6 事件规则/开局配置。
+后续规划：M7 战斗深化（技能/防御/逃跑/多敌人/经验）、限量商店、任务日志 UI。
 
 ---
 
 ## 4. 测试：`qa/` 包（仅 Python 标准库，无第三方依赖）
 
 ```powershell
-.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（M3+M4+M5，116 条）
-.\.venv\Scripts\python.exe -m qa.m5_npc_dialogue  # 单跑一个里程碑
+.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（M3~M6，161 条）
+.\.venv\Scripts\python.exe -m qa.m6_events_config  # 单跑一个里程碑
 ```
 
 - 新里程碑：新建 `qa/m6_xxx.py`，提供 `SUITE` 名和 `run(r)` 即可被自动发现。
-- 共享层 `qa/tge_api.py`：`GameClient`（自动带 client_id/mode、UTF-8 JSON、reset/teleport/give/set_flag/combat/dialogue/editor_* 等动词）、`editor_snapshot/editor_restore`（四表自动还原）。
+- 共享层 `qa/tge_api.py`：`GameClient`（自动带 client_id/mode、UTF-8 JSON、reset/teleport/give/set_flag/move/combat/dialogue/editor_*/config/event-rule/game-info 等动词）、`editor_snapshot/editor_restore`（场景/物品/敌人/NPC/config 五份数据自动还原）。
 - 安全约定：测试实体一律 `qa_` 前缀；套件结束自动清 qa_ 存档与 game_data/*.bak；跑前确认 `app.py` 已启动。
 - 可用 `TGE_BASE=https://...` 指向其他服务器跑冒烟测试。
 
@@ -124,6 +135,8 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 
 4. **热更新是"内存 dict 原地改"**：编辑器保存后对新会话立即生效；**已存在会话的旧场景快照不动**
    （items_here/锁/enemies），改完要 `reset` 才看到。新加场景由 `SM.refresh_new_scenes()` 补状态键。
+   **例外：事件规则只在会话创建时注册一次**，改规则必须新开会话（reset 不够）；
+   开局配置改了对 reset 立即生效（reset 实时读 config）。
 5. **`/api/state` 的 `npcs_here` / `enemies_here` 在响应顶层**，不在 `scene` 里；
    `scene.shop_items` 是 join 后的 `{id,name,price}`（编辑器存的是 `{item_id,price}`），断言别取错键。
 6. **对话/战斗不自动触发**：进场景只渲染按钮，玩家点「和 XX 说话/挑战」才开始；

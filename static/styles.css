@@ -593,6 +593,13 @@ main {
     font-weight: 600;
 }
 #mode-overlay .mode-subtitle { color: var(--text-dim); margin-bottom: 1.8rem; font-size: 0.85rem; }
+#mode-overlay .game-intro {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    max-width: 560px;
+    margin: -0.4rem auto 1rem;
+    line-height: 1.6;
+}
 .mode-buttons { display: flex; gap: 1.2rem; flex-wrap: wrap; justify-content: center; }
 .mode-card {
     background: var(--bg-panel);

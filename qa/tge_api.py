@@ -133,6 +133,9 @@ class GameClient:
     def take(self, item_id: str) -> dict:
         return self.action("take_item", item_id)
 
+    def move(self, scene_id: str) -> dict:
+        return self.action("move_scene", scene_id)
+
     def buy(self, item_id: str) -> dict:
         return self.action("buy_item", item_id)
 
@@ -218,6 +221,22 @@ class GameClient:
         _, d = self.delete(f"/api/editor/{kind}/{urllib.parse.quote(entity_id)}")
         return d
 
+    # ---------- 开局配置 / 事件规则 ----------
+    def game_info(self) -> dict:
+        _, d = self.get("/api/game-info", with_client=False)
+        return d
+
+    def config_save(self, payload: dict) -> dict:
+        _, d = self.post("/api/editor/config", payload)
+        return d
+
+    def event_rule_save(self, payload: dict) -> dict:
+        _, d = self.post("/api/editor/event-rule", payload)
+        return d
+
+    def event_rule_delete(self, rule_id: str) -> dict:
+        return self.editor_delete("event-rule", rule_id)
+
     # ---------- 清理 ----------
     def cleanup_saves(self, db_path: str = DEFAULT_DB) -> int:
         """删掉本 client 在 SQLite 里留下的所有存档槽，返回删除行数。"""
@@ -236,15 +255,17 @@ class GameClient:
 # 编辑器数据快照 / 还原
 # ============================================================
 def editor_snapshot(c: GameClient) -> dict:
-    """跑用例前拍下 scenes/items/enemies/npcs 四表的深拷贝。"""
+    """跑用例前拍下 scenes/items/enemies/npcs/config 五份数据的深拷贝。"""
     d = c.editor_data()
-    return {k: copy.deepcopy(d[k]) for k in ("scenes", "items", "enemies", "npcs")}
+    return {k: copy.deepcopy(d[k]) for k in
+            ("scenes", "items", "enemies", "npcs", "config")}
 
 
 def editor_restore(c: GameClient, snap: dict) -> None:
     """把编辑器数据还原到快照：先 upsert 旧实体（恢复内容/引用），再删测试新增实体。
 
-    顺序按引用关系：还原 scenes→items→enemies→npcs；删除反向 npcs→enemies→items→scenes。
+    顺序按引用关系：还原 scenes→items→enemies→npcs→config（config 的事件规则
+    引用所有实体，必须最后存）；删除反向 npcs→enemies→items→scenes。
     """
     # 1) 内容还原
     for scene in snap["scenes"].values():
@@ -255,6 +276,16 @@ def editor_restore(c: GameClient, snap: dict) -> None:
         c.editor_save("enemy", enemy)
     for npc in snap["npcs"].values():
         c.editor_save("npc", npc)
+    if "config" in snap:
+        c.config_save(snap["config"])
+        # config_save 只覆盖开局字段、保留 event_rules —— 规则集需要单独还原
+        snap_rules = {r["id"]: r for r in snap["config"].get("event_rules", [])}
+        for rule in snap_rules.values():
+            c.event_rule_save(rule)
+        live_rules = c.editor_data()["config"].get("event_rules", [])
+        for rule in live_rules:
+            if rule["id"] not in snap_rules:
+                c.event_rule_delete(rule["id"])
 
     # 2) 删除测试新增实体（NPC 引用场景/物品/敌人，最先删）
     live = c.editor_data()

@@ -11,6 +11,7 @@
         <div class="ed-title">游戏内容编辑器</div>
         <div class="ed-top-actions">
             <a class="ed-btn" href="index.html">返回游戏</a>
+            <button class="ed-btn" id="btn-config" type="button">游戏设置</button>
             <button class="ed-btn primary" id="btn-playtest" type="button">在新标签页试玩</button>
         </div>
     </header>
@@ -23,6 +24,7 @@
                 <button class="ed-tab" data-tab="items" type="button">物品</button>
                 <button class="ed-tab" data-tab="enemies" type="button">敌人</button>
                 <button class="ed-tab" data-tab="npcs" type="button">NPC</button>
+                <button class="ed-tab" data-tab="events" type="button">事件</button>
             </div>
             <button class="ed-btn block" id="btn-new" type="button">+ 新建</button>
             <div class="ed-list" id="ed-list"></div>
@@ -214,6 +216,89 @@
                     <button type="button" class="ed-btn danger hidden" id="npc-delete">删除</button>
                     <button type="button" class="ed-btn" id="npc-cancel">取消</button>
                 </div>
+            </form>
+
+            <!-- 事件规则表单 -->
+            <form class="ed-form hidden" id="form-event">
+                <h2 id="event-form-title">新建事件规则</h2>
+                <label class="ed-field">
+                    <span>规则 ID（小写字母/数字/下划线，保存后不可改）</span>
+                    <input type="text" id="event-id" placeholder="例：kill_goblin_reward">
+                </label>
+                <label class="ed-field">
+                    <span>备注名（列表里好认，可不填）</span>
+                    <input type="text" id="event-label" placeholder="例：击败哥布林后获得药水">
+                </label>
+                <label class="ed-field">
+                    <span>触发器（什么时候执行这条规则）</span>
+                    <select id="event-on"></select>
+                </label>
+                <div class="ed-field">
+                    <span>触发对象（按触发器类型填写；地点类留空 = 任意地点）</span>
+                    <div id="event-args" class="event-args"></div>
+                </div>
+                <div class="ed-field">
+                    <span>附加条件（可选：世界状态满足时规则才生效）</span>
+                    <div class="event-when-row" id="event-when"></div>
+                </div>
+                <div class="ed-field">
+                    <span>执行效果（可多个，按顺序执行）</span>
+                    <div id="event-effects" class="event-effects"></div>
+                    <button type="button" class="ed-btn mini" id="event-add-effect">+ 添加效果</button>
+                </div>
+
+                <div class="ed-form-actions">
+                    <button type="button" class="ed-btn primary" id="event-save">保存</button>
+                    <button type="button" class="ed-btn danger hidden" id="event-delete">删除</button>
+                    <button type="button" class="ed-btn" id="event-cancel">取消</button>
+                </div>
+                <p class="ed-tip">注意：事件规则在游戏会话创建时装配，修改后对新开游戏/重置生效，进行中的游戏需重置。</p>
+            </form>
+
+            <!-- 游戏设置（开局配置）面板：占满右侧，自带关闭按钮 -->
+            <form class="ed-form hidden" id="form-config">
+                <div class="config-head">
+                    <h2>游戏设置（开局配置）</h2>
+                    <button type="button" class="ed-btn" id="config-close">返回</button>
+                </div>
+                <label class="ed-field">
+                    <span>游戏标题（显示在模式选择页和游戏顶栏）</span>
+                    <input type="text" id="config-title" maxlength="40">
+                </label>
+                <label class="ed-field">
+                    <span>游戏简介（显示在标题下方，可留空）</span>
+                    <textarea id="config-intro" rows="2" maxlength="200"></textarea>
+                </label>
+                <label class="ed-field">
+                    <span>初始地点（新游戏出生点）</span>
+                    <select id="config-scene"></select>
+                </label>
+                <div class="ed-field">
+                    <span>初始背包（新游戏开局自带的物品；货币类物品会折算成金币）</span>
+                    <div class="ed-check-group" id="config-items"></div>
+                </div>
+                <label class="ed-field">
+                    <span>初始金币</span>
+                    <input type="number" id="config-gold" min="0" step="1" value="0">
+                </label>
+                <div class="ed-field-row">
+                    <label class="ed-field">
+                        <span>玩家生命值</span>
+                        <input type="number" id="config-hp" min="1" step="1" value="50">
+                    </label>
+                    <label class="ed-field">
+                        <span>攻击力</span>
+                        <input type="number" id="config-attack" min="0" step="1" value="5">
+                    </label>
+                    <label class="ed-field">
+                        <span>防御力</span>
+                        <input type="number" id="config-defense" min="0" step="1" value="2">
+                    </label>
+                </div>
+                <div class="ed-form-actions">
+                    <button type="button" class="ed-btn primary" id="config-save">保存设置</button>
+                </div>
+                <p class="ed-tip">开局配置对新开游戏/重置立即生效，不影响进行中的游戏。事件规则在「事件」页签编辑。</p>
             </form>
         </section>
     </main>

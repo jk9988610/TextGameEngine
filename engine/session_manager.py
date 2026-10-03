@@ -135,9 +135,9 @@ class SessionManager:
         # 初始场景触发 SCENE_ENTER → 让 NPC/战斗系统同步场景
         bus.publish("SCENE_ENTER", scene_id=game_state["current_scene"])
 
-        # 声明式事件规则（拿钥匙开门之类的具体游戏逻辑写在 game_config.json，
-        # 引擎这里只负责装配，不含任何具体规则）
-        DeclarativeRules(game_state).register(bus, cfg.get("event_rules", []))
+        # 声明式事件规则（拿钥匙开门/击杀任务等具体游戏逻辑写在 game_config.json，
+        # 引擎这里只负责装配，不含任何具体规则；效果统一走 EffectExecutor）
+        DeclarativeRules(effect_executor).register(bus, cfg.get("event_rules", []))
 
         return {
             "game_state": game_state,

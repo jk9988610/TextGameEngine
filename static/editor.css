@@ -286,3 +286,43 @@ body {
 .npc-effect-row .ne-param { flex: 1 1 120px; }
 .npc-effect-row .ed-btn { margin-top: 0; }
 .nc-effects:empty { display: none; }
+
+/* ---------- 事件规则编辑 ---------- */
+.event-args {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+.event-arg-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.76rem;
+    color: var(--text-dim);
+}
+.event-arg-row select { width: auto; min-width: 150px; }
+.event-when-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+.event-when-row select { width: auto; }
+.event-when-row input { flex: 1 1 180px; }
+.event-effects { margin-bottom: 0.3rem; }
+.ed-tip {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+}
+
+/* 游戏设置面板：隐藏左侧栏，右侧占满 */
+body.config-open .ed-sidebar { display: none; }
+#form-config { max-width: 640px; }
+.config-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+}
+.config-head h2 { margin: 0; }
