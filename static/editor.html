@@ -10,6 +10,10 @@
 <body>
     <header class="ed-topbar">
         <div class="ed-title">游戏内容编辑器</div>
+        <div class="wb-switch" role="group" aria-label="编辑模式">
+            <button type="button" class="wb-mode-btn active" id="mode-list">列表编辑</button>
+            <button type="button" class="wb-mode-btn" id="mode-canvas">画布编辑</button>
+        </div>
         <div class="ed-top-actions">
             <a class="ed-btn" href="index.html">返回游戏</a>
             <button class="ed-btn" id="btn-config" type="button">游戏设置</button>
@@ -201,37 +205,9 @@
                 </div>
 
                 <div class="ed-field">
-                    <div class="nc-view-bar">
-                        <span>对话节点（每个节点是 NPC 说的一段话 + 玩家可选的选项；选项的「下一节点」为空 = 结束对话）</span>
-                        <span class="nc-view-switch">
-                            <button type="button" class="ed-btn mini nc-view-btn" data-view="list">列表</button>
-                            <button type="button" class="ed-btn mini nc-view-btn" data-view="canvas">画布</button>
-                        </span>
-                    </div>
+                    <span>对话节点（每个节点是 NPC 说的一段话 + 玩家可选的选项；选项的「下一节点」为空 = 结束对话。可视化拉线请切到顶栏「画布编辑」）</span>
                     <div id="npc-nodes"></div>
                     <button type="button" class="ed-btn mini" id="npc-add-node">+ 添加节点</button>
-
-                    <!-- 画布视图（默认隐藏；由 npc_canvas.js 挂载 Drawflow） -->
-                    <div id="npc-canvas-wrap" class="nc-canvas-wrap hidden">
-                        <div class="nc-canvas-toolbar">
-                            <button type="button" class="ed-btn mini" id="nc-canvas-exit">← 返回列表</button>
-                            <span class="nc-tb-sep"></span>
-                            <button type="button" class="ed-btn mini" id="nc-canvas-add">＋ 卡片</button>
-                            <button type="button" class="ed-btn mini" id="nc-canvas-zoomout">−</button>
-                            <button type="button" class="ed-btn mini" id="nc-canvas-reset">⊙</button>
-                            <button type="button" class="ed-btn mini" id="nc-canvas-zoomin">＋</button>
-                            <label class="nc-snap"><input type="checkbox" id="nc-canvas-snap" checked> 吸附</label>
-                            <select id="nc-canvas-grid">
-                                <option value="28">普通 28</option>
-                                <option value="14">精细 14</option>
-                            </select>
-                            <span class="nc-dirty hidden" id="nc-canvas-dirty">画布有结构改动，请保存生效</span>
-                            <span class="nc-hint">左键拖卡/拖框多选 · 右缘蓝点拉线 · 右键拖画布 · 滚轮缩放</span>
-                            <button type="button" class="ed-btn mini primary" id="nc-canvas-save">保存</button>
-                        </div>
-                        <div id="npc-canvas" class="nc-canvas"></div>
-                        <div id="npc-canvas-marquee" class="nc-marquee"></div>
-                    </div>
                 </div>
 
                 <!-- 动态下拉候选（节点/物品/敌人/地点） -->
@@ -331,6 +307,52 @@
             </form>
         </section>
     </main>
+
+    <!-- ============ 画布工作台（顶栏「画布编辑」时显示） ============ -->
+    <div id="cw-workbench" class="hidden">
+        <div id="cw-bar">
+            <button type="button" id="cw-panel-toggle" class="cw-tb" title="收纳/展开属性栏（Ctrl+B）">☰</button>
+            <span class="cw-sep"></span>
+            <span class="cw-bar-label">对话树</span>
+            <select id="cw-npc" title="每个 NPC 一棵独立对话图"></select>
+            <button type="button" id="cw-add" class="cw-tb">＋ 卡片</button>
+            <button type="button" id="cw-save" class="cw-tb primary">保存</button>
+            <span class="cw-sep"></span>
+            <button type="button" id="cw-zout" class="cw-tb">−</button>
+            <button type="button" id="cw-zreset" class="cw-tb" title="重置缩放/平移">⊙</button>
+            <button type="button" id="cw-zin" class="cw-tb">＋</button>
+            <span id="cw-dirty" class="cw-dirty hidden">有未保存的改动</span>
+        </div>
+
+        <div id="cw-canvas" class="nc-canvas"></div>
+        <div id="cw-marquee" class="nc-marquee"></div>
+
+        <!-- 右侧属性抽屉：点节点后编辑台词/选项/条件/效果 -->
+        <aside id="nc-inspector">
+            <div class="nci-head">
+                <span id="nci-title">节点属性</span>
+                <button type="button" id="nci-edit-npc" class="cw-tb mini">NPC 设置</button>
+            </div>
+            <div id="nci-body" class="nci-body">
+                <div class="nci-empty" id="nci-placeholder">在画布上点选一张卡片进行编辑</div>
+            </div>
+        </aside>
+
+        <div id="cw-status">
+            <span>对话：<b id="cw-st-npc">—</b></span>
+            <span>节点 <b id="cw-st-nodes">0</b></span>
+            <span>坐标 <b id="cw-st-xy">0, 0</b> 格</span>
+            <span>缩放 <b id="cw-st-zoom">100%</b></span>
+            <span class="cw-sp"></span>
+            <label class="cw-opt"><input type="checkbox" id="cw-snap" checked> 吸附网格</label>
+            <span class="cw-opt">精度
+                <select id="cw-grid">
+                    <option value="28">普通 28</option>
+                    <option value="14">精细 14</option>
+                </select>
+            </span>
+        </div>
+    </div>
 
     <!-- 消息条 -->
     <div class="ed-toast hidden" id="ed-toast"></div>

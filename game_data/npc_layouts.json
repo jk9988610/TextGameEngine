@@ -1,20 +1,58 @@
 {
+  "npc_1_drunk": {
+    "ask_key": {
+      "x": -28,
+      "y": 224
+    },
+    "drink_no": {
+      "x": 196,
+      "y": 84
+    },
+    "drink_yes": {
+      "x": 0,
+      "y": -112
+    },
+    "greet": {
+      "x": -308,
+      "y": -28
+    },
+    "hero_brag": {
+      "x": 112,
+      "y": 616
+    },
+    "hero_humble": {
+      "x": 168,
+      "y": 392
+    },
+    "hero_welcome": {
+      "x": -252,
+      "y": 392
+    },
+    "leave": {
+      "x": 560,
+      "y": 336
+    },
+    "node_9": {
+      "x": 392,
+      "y": 28
+    }
+  },
   "npc_2_sprite": {
     "after_kill": {
       "x": -112,
       "y": 56
     },
     "after_kill_hard": {
-      "x": 504,
-      "y": 0
+      "x": 224,
+      "y": -56
     },
     "after_kill_humble": {
-      "x": 168,
+      "x": 28,
       "y": -112
     },
     "blessing_done": {
       "x": 336,
-      "y": 196
+      "y": 168
     },
     "greet": {
       "x": 84,

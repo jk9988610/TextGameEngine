@@ -30,6 +30,12 @@ async function loadData() {
         toast('无法连接服务器', 'error');
         return;
     }
+
+    // 画布模式下重拉只刷新工作台（保持模式/选中），列表 DOM 不动
+    if (document.body.classList.contains('workbench-canvas')) {
+        window.NpcCanvas?.refresh();
+        return;
+    }
     renderList();
     if (selectedId && DATA[tab][selectedId]) {
         showForm(tab, selectedId);  // 保存后刷新表单，保持选中
@@ -38,11 +44,33 @@ async function loadData() {
     }
 }
 
+// 画布工作台调用的两个列表侧动作
+window.EditorActions = {
+    async reloadData() { return loadData(); },
+    editNpc(id) {
+        setWorkbench(false);
+        switchTab('npcs');
+        showForm('npcs', id);
+    },
+};
+
+/* 顶栏「列表编辑 | 画布编辑」模式开关 */
+function setWorkbench(canvasOn) {
+    document.body.classList.toggle('workbench-canvas', canvasOn);
+    $('mode-list').classList.toggle('active', !canvasOn);
+    $('mode-canvas').classList.toggle('active', canvasOn);
+    // 在 NPC 页签且选中了某个 NPC 时，画布跟随该 NPC
+    if (canvasOn) window.NpcCanvas?.enter(tab === 'npcs' ? selectedId : null);
+    else window.NpcCanvas?.exit();
+}
+
 // ---------- 列表 / 页签 ----------
 function bindStaticEvents() {
     document.querySelectorAll('.ed-tab').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
+    $('mode-list').addEventListener('click', () => setWorkbench(false));
+    $('mode-canvas').addEventListener('click', () => setWorkbench(true));
     $('btn-new').addEventListener('click', onNew);
     $('btn-playtest').addEventListener('click', () => window.open('index.html', '_blank'));
 
@@ -85,7 +113,6 @@ function switchTab(next) {
     selectedId = null;
     isNew = false;
     document.body.classList.remove('config-open');
-    window.NpcCanvas?.exit();   // 离开 NPC 页签时退出全屏画布
     document.querySelectorAll('.ed-tab').forEach(b =>
         b.classList.toggle('active', b.dataset.tab === tab));
     renderList();
@@ -128,7 +155,6 @@ function showEmpty() {
     selectedId = null;
     isNew = false;
     document.body.classList.remove('config-open');
-    window.NpcCanvas?.exit();   // 取消/删除后收起全屏画布
     $('ed-empty').classList.remove('hidden');
     $('form-scene').classList.add('hidden');
     $('form-item').classList.add('hidden');
@@ -267,7 +293,6 @@ function showForm(kind, id) {
         $('form-event').classList.add('hidden');
         $('form-npc').classList.remove('hidden');
         renderNpcForm(npc);
-        window.NpcCanvas?.bind(id);
     } else if (kind === 'events') {
         const rule = (DATA.config.event_rules || []).find(r => r.id === id);
         if (!rule) return;
@@ -870,10 +895,7 @@ function collectNpcPayload() {
 }
 
 async function saveNpc() {
-    // 画布开着时，节点集合/next 以画布内存为准合并（DOM 收集的台词/条件/效果保留）
-    const payload = window.NpcCanvas
-        ? window.NpcCanvas.mergeForSave(collectNpcPayload())
-        : collectNpcPayload();
+    const payload = collectNpcPayload();
     const res = await fetch('/api/editor/npc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -884,7 +906,6 @@ async function saveNpc() {
     selectedId = data.id;
     isNew = false;
     await loadData();
-    window.NpcCanvas?.onSaved(data.id);
     toast([data.message, ...(data.warnings || [])].join('\n'),
         (data.warnings || []).length ? 'warning' : 'success');
 }
@@ -1054,7 +1075,7 @@ async function deleteEventRule() {
 // ---------- 游戏设置（开局配置） ----------
 function openConfig() {
     const cfg = DATA.config || {};
-    window.NpcCanvas?.exit();   // 游戏设置全屏面板与画布互斥
+    if (document.body.classList.contains('workbench-canvas')) setWorkbench(false);
     document.body.classList.add('config-open');
     selectedId = null;
     renderList();

@@ -307,67 +307,51 @@ body {
     align-items: center;
 }
 
-/* ============ NPC 画布视图（Drawflow，nc- 前缀隔离） ============ */
-.nc-view-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.nc-view-switch { display: flex; gap: 0; flex: none; }
-.nc-view-btn { border-radius: 0; margin: 0; }
-.nc-view-btn:first-child { border-radius: 6px 0 0 6px; }
-.nc-view-btn:last-child { border-radius: 0 6px 6px 0; }
-.nc-view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* ============ 顶栏：列表 / 画布 模式分段开关 ============ */
+.wb-switch { display: flex; margin-left: 1.4rem; flex: none; }
+.wb-mode-btn {
+    border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-dim);
+    padding: 0.3rem 0.9rem; font-size: 0.78rem; cursor: pointer; font-family: inherit;
+    margin: 0; border-radius: 0;
+}
+.wb-mode-btn:first-child { border-radius: 6px 0 0 6px; }
+.wb-mode-btn:last-child { border-radius: 0 6px 6px 0; }
+.wb-mode-btn + .wb-mode-btn { border-left: none; }
+.wb-mode-btn:hover { color: var(--text); }
+.wb-mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-.nc-canvas-wrap {
-    margin-top: 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    background: #1a1b1f;
+/* ============ 画布工作台（顶栏以下全覆盖；nc-/cw- 前缀隔离） ============ */
+#cw-workbench {
+    position: fixed; top: 44px; left: 0; right: 0; bottom: 0; z-index: 30;
 }
-.nc-canvas-toolbar {
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-    padding: 7px 10px; background: rgba(0,0,0,.18);
-    border-bottom: 1px solid var(--border);
-}
-.nc-canvas-toolbar .nc-snap, .nc-canvas-toolbar .nc-hint {
-    font-size: 0.74rem; color: var(--text-dim); display: flex; align-items: center; gap: 4px;
-}
-.nc-canvas-toolbar select {
-    background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
-    border-radius: 5px; padding: 3px 6px; font-size: 0.74rem;
-}
-.nc-canvas-toolbar .nc-hint { margin-left: auto; }
-.nc-tb-sep {
-    width: 1px; align-self: stretch; margin: 3px 6px;
-    background: var(--border); flex: none;
-}
-.nc-dirty { color: #f0b35e; font-size: 0.76rem; font-weight: 600; }
-#nc-canvas-save { flex: none; font-weight: 600; }
+body.workbench-canvas .ed-main { display: none; }
 
-/* 画布全屏模式：顶栏（44px）以下铺满整个视口；overlay 固定定位，不挤文档流 */
-body.canvas-open .ed-sidebar { display: none; }
-body.canvas-open .nc-canvas-wrap {
-    position: fixed;
-    top: 44px; left: 0; right: 0; bottom: 0;
-    z-index: 40;
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-    border: none;
-    border-radius: 0;
+/* 画布工具条 */
+#cw-bar {
+    position: absolute; top: 0; left: 0; right: 0; height: 42px; z-index: 12;
+    display: flex; align-items: center; gap: 6px; padding: 0 10px;
+    background: rgba(26,27,31,.96); border-bottom: 1px solid #2f3239;
 }
-body.canvas-open .nc-canvas-toolbar { flex: none; }
-body.canvas-open .nc-canvas {
-    flex: 1 1 auto;
-    height: auto;
-    min-height: 0;
+.cw-bar-label { font-size: 0.78rem; color: var(--text-dim); }
+#cw-npc {
+    background: #26272b; color: var(--text); border: 1px solid #3a3d45; border-radius: 6px;
+    padding: 5px 8px; font-size: 0.8rem; font-family: inherit; min-width: 170px;
 }
-/* 窄屏收起长提示，保证工具栏一行 */
-@media (max-width: 1100px) {
-    .nc-canvas-toolbar .nc-hint { display: none; }
+.cw-tb {
+    border: 1px solid #3a3d45; background: #26272b; color: var(--text); border-radius: 6px;
+    padding: 5px 10px; font-size: 0.78rem; cursor: pointer; font-family: inherit;
+    white-space: nowrap;
 }
+.cw-tb:hover { border-color: var(--accent); }
+.cw-tb.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.cw-tb.mini { padding: 2px 8px; font-size: 0.72rem; }
+#cw-panel-toggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cw-sep { width: 1px; height: 22px; background: #3a3d45; margin: 0 3px; flex: none; }
+.cw-dirty { color: #f0b35e; font-size: 0.76rem; font-weight: 600; }
 
+/* 画布本体（工具条 42 与底栏 34 之间铺满） */
 .nc-canvas {
-    position: relative;
-    height: 560px;
+    position: absolute; top: 42px; left: 0; right: 0; bottom: 34px;
     --nc-grid: 28px;
     background:
         linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
@@ -377,6 +361,45 @@ body.canvas-open .nc-canvas {
     overflow: hidden;
     touch-action: none;
 }
+
+/* 右侧属性抽屉（贴工具条与底栏；Ctrl+B/☰ 滑出收纳） */
+#nc-inspector {
+    position: absolute; top: 0; right: 0; bottom: 34px; width: 340px; z-index: 15;
+    background: rgba(26,27,31,.97); border-left: 1px solid #2f3239;
+    display: flex; flex-direction: column; overflow: hidden;
+    transition: transform 0.16s ease;
+}
+#nc-inspector.collapsed { transform: translateX(100%); }
+.nci-head {
+    flex: none; height: 42px; padding: 0 12px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #2f3239; font-size: 0.8rem; color: var(--text-dim);
+}
+.nci-head .cw-tb { margin-left: auto; }
+.nci-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.nci-empty { color: var(--text-dim); font-size: 0.8rem; padding: 1.6rem 0.4rem; text-align: center; }
+.nci-node-id { font-size: 0.72rem; color: var(--text-dim); }
+.nci-node-id b { color: var(--accent); }
+.nci-sec { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px;
+    display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.nci-body .npc-choice { margin: 0; padding: 8px; border: 1px solid var(--border);
+    border-style: solid; border-radius: 7px;
+    background: rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 6px; }
+.nci-body .npc-effect-row { margin-left: 0; }
+.nci-del-node { align-self: flex-start; }
+
+/* 底栏状态栏 */
+#cw-status {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 34px; z-index: 12;
+    display: flex; align-items: center; gap: 18px; padding: 0 14px;
+    background: rgba(26,27,31,.95); border-top: 1px solid #2f3239;
+    font-size: 0.76rem; color: var(--text-dim);
+}
+#cw-status b { color: var(--text); font-weight: 600; }
+.cw-sp { flex: 1; }
+.cw-opt { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+.cw-opt select { background: #26272b; color: var(--text); border: 1px solid #3a3d45; border-radius: 5px;
+    padding: 2px 5px; font-size: 0.74rem; font-family: inherit; }
 .nc-canvas.grabbing, .nc-canvas.grabbing * { cursor: grabbing !important; }
 
 /* Drawflow 节点卡片（与编辑器暗色体系一致，统一宽 280） */
@@ -403,11 +426,6 @@ body.canvas-open .nc-canvas {
     padding: 7px 11px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 6px;
 }
-.nc-node-head .nc-edit-here {
-    margin-left: auto; border: 1px solid var(--border); background: transparent; color: var(--text-dim);
-    border-radius: 5px; font-size: 10px; padding: 1px 6px; cursor: pointer; font-family: inherit;
-}
-.nc-node-head .nc-edit-here:hover { color: var(--accent); border-color: var(--accent); }
 .nc-node-text { padding: 8px 11px; font-size: 12.5px; line-height: 1.5;
     max-height: 88px; overflow: hidden; white-space: pre-wrap; }
 .nc-choice { display: flex; gap: 7px; align-items: center; padding: 7px 11px; font-size: 12px;
