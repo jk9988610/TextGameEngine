@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Drawflow 手感 demo · 规范化版</title>
+<link rel="stylesheet" href="demo-lib/drawflow.min.css">
+<style>
+:root {
+  --card-bg:rgba(37,38,40,.92); --card-border:#3a3d45; --hl:#4d9fff;
+  --text:#e6e8ec; --sub:#8b909b; --edge:#6b7280;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; overflow:hidden;
+  font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; background:#141518; color:var(--text); }
+
+#hint {
+  position:fixed; top:12px; left:12px; z-index:40;
+  background:rgba(30,31,34,.92); border:1px solid #3a3d45; border-radius:8px;
+  padding:8px 12px; font-size:12px; color:var(--sub); line-height:1.7;
+}
+#hint b { color:var(--text); }
+
+#df {
+  position:fixed; inset:0;
+  background:
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px),
+    #1a1b1f;
+  background-size:28px 28px;
+}
+#df:focus { outline:none; }
+
+/* ===== 卡片规范化：严格保持 Drawflow 标准 DOM
+   node > [.inputs] [.drawflow_content_node] [.outputs]
+   output 圆点绝不移动出库结构（库靠 parentElement.parentElement.id 找节点），
+   对齐选项行用 CSS 变量：--y1/--y2 由 JS 按行高写入。 ===== */
+.drawflow .drawflow-node {
+  width:260px; min-height:0; padding:0;
+  display:flex; align-items:stretch;
+  background:var(--card-bg);
+  border:1.5px solid var(--card-border);
+  border-radius:10px;
+  color:var(--text);
+  box-shadow:0 6px 22px rgba(0,0,0,.28);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+.drawflow .drawflow-node.selected { background:var(--card-bg);
+  border-color:var(--hl); box-shadow:0 0 0 3px rgba(77,159,255,.16); }
+
+/* 左右端口列宽为 0（圆点压在卡片边缘线上） */
+.drawflow .drawflow-node .inputs,
+.drawflow .drawflow-node .outputs { width:0; }
+.drawflow .drawflow-node .inputs  { display:flex; align-items:center; }
+.drawflow .drawflow-node .outputs { display:block; position:relative; }
+
+.drawflow_content_node { width:100%; position:relative; }
+
+.n-head {
+  font-size:11px; color:var(--sub); letter-spacing:.5px; text-transform:uppercase;
+  padding:8px 11px; border-bottom:1px solid var(--card-border);
+}
+.n-text { padding:8px 11px; font-size:12.5px; line-height:1.55; }
+.n-choice {
+  display:flex; gap:7px; align-items:center;
+  padding:7px 11px; font-size:12px; border-top:1px solid rgba(255,255,255,.04);
+}
+.n-choice::before { content:""; width:5px; height:5px; border-radius:50%;
+  background:var(--sub); flex:none; }
+.n-choice .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.n-choice .n { font-size:10.5px; color:var(--hl); }
+
+/* 端口圆点：13px 压在卡片边缘线上。input 垂直居中；
+   output 用节点上的 --yN 变量定位到第 N 条选项行中心（JS 写入） */
+.drawflow .drawflow-node .input,
+.drawflow .drawflow-node .output {
+  position:absolute; width:13px; height:13px;
+  background:#1a1b1f; border:2px solid var(--hl); border-radius:50%;
+  cursor:crosshair; z-index:3; margin:0;
+}
+.drawflow .drawflow-node .input {
+  left:-6.5px; top:50%; transform:translateY(-50%);
+}
+.drawflow .drawflow-node .output {
+  right:-6.5px; transform:translateY(-50%);
+  top:var(--y, 50%);
+}
+.drawflow .drawflow-node .output_1 { top:var(--y1, 50%); }
+.drawflow .drawflow-node .output_2 { top:var(--y2, 50%); }
+.drawflow .drawflow-node .output_3 { top:var(--y3, 50%); }
+.drawflow .drawflow-node .output_4 { top:var(--y4, 50%); }
+.drawflow .drawflow-node .output_5 { top:var(--y5, 50%); }
+.drawflow .drawflow-node .output_6 { top:var(--y6, 50%); }
+.drawflow .drawflow-node .output_7 { top:var(--y7, 50%); }
+.drawflow .drawflow-node .output_8 { top:var(--y8, 50%); }
+
+/* 连线 */
+.drawflow .connection .main-path { stroke:var(--edge); stroke-width:2px; }
+.drawflow .connection .main-path:hover { stroke:var(--hl); }
+.drawflow .connection .main-path.selected { stroke:#4ade80; }
+.drawflow-delete { background:#f87171; border:2px solid #1a1b1f; width:26px; height:26px;
+  line-height:22px; border-radius:50%; }
+
+#zoombar { position:fixed; right:350px; bottom:12px; z-index:40; display:flex; gap:6px; }
+#zoombar button { width:34px; height:34px; border-radius:8px; border:1px solid #3a3d45;
+  background:rgba(30,31,34,.92); color:var(--text); font-size:16px; cursor:pointer; }
+#zoombar button:hover { border-color:var(--hl); }
+
+/* JSON 面板：可编辑 + 复制/应用 */
+#codepanel {
+  position:fixed; top:52px; right:12px; width:330px; bottom:12px; z-index:30;
+  background:rgba(26,27,31,.96); border:1px solid #2f3239; border-radius:10px;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#codepanel .h { padding:8px 12px; font-size:12px; color:var(--sub);
+  border-bottom:1px solid #2f3239; display:flex; align-items:center; gap:6px; }
+#codepanel .h .sp { flex:1; }
+#codepanel .h button { border:1px solid #3a3d45; background:#26272b; color:var(--text);
+  border-radius:6px; padding:3px 9px; font-size:11.5px; cursor:pointer; font-family:inherit; }
+#codepanel .h button:hover { border-color:var(--hl); }
+#codepanel textarea {
+  flex:1; width:100%; border:0; resize:none; background:transparent;
+  color:#c8d4e8; padding:10px 12px; font-size:11.5px; line-height:1.6;
+  font-family:Consolas,"Courier New",monospace; outline:none;
+}
+</style>
+</head>
+<body>
+
+<div id="hint">
+  <b>规范化版（Drawflow 默认交互）</b><br>
+  · <b>左键拖卡片</b>；<b>右键按住拖画布</b>；滚轮缩放（右下按钮也行）<br>
+  · 从选项行右缘<b>蓝点</b>拖到目标卡片<b>任意位置</b>即可连线（无需精确对点）<br>
+  · <b>右键点卡片</b>删除；点连线选中后右键画布可删（或控制台操作）<br>
+  · 右侧 JSON 可直接改 →「应用」重建画布；控制台输入 <b>graph.help()</b> 看命令
+</div>
+
+<div id="df"></div>
+
+<div id="zoombar">
+  <button id="zout" title="缩小">−</button>
+  <button id="zreset" title="复位">⊙</button>
+  <button id="zin" title="放大">＋</button>
+</div>
+
+<div id="codepanel">
+  <div class="h"><span>nodes JSON（可编辑）</span><span class="sp"></span>
+    <button id="btn-apply">应用</button><button id="btn-copy">复制</button>
+  </div>
+  <textarea id="code" spellcheck="false"></textarea>
+</div>
+
+<script src="demo-lib/drawflow.min.js"></script>
+<script>
+/* ========= 我们自己的对话数据（M5 结构） ========= */
+const INITIAL = {
+  greet: {
+    x: 60, y: 90,
+    text: "你好啊，旅行者。我是这片森林的守护者。",
+    choices: [
+      { text: "这片森林里有什么秘密吗？", next: "secret" },
+      { text: "（默默离开）" },
+    ]
+  },
+  secret: {
+    x: 430, y: 150,
+    text: "森林深处有个神秘洞穴，被锁住了，需要特殊钥匙。",
+    choices: []
+  }
+};
+let DATA = structuredClone(INITIAL);
+
+const $ = id => document.getElementById(id);
+const esc = s => (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+const editor = new Drawflow($("df"));
+editor.start();
+editor.force_first_input = true;   // 拖到卡片任意位置即接入其第一个（唯一）入口
+editor.zoom_max = 1.6; editor.zoom_min = 0.4;
+
+const idMap = {};   // drawflow 数字 id -> 我们的节点 id
+
+/* ===== 模型 → 画布：DATA 重建整张图 ===== */
+function renderGraph(data) {
+  editor.clear();
+  Object.keys(idMap).forEach(k => delete idMap[k]);
+
+  for (const [id, n] of Object.entries(data)) {
+    const html =
+      `<div class="n-head">${id}</div><div class="n-text">${esc(n.text)}</div>` +
+      n.choices.map((c, i) =>
+        `<div class="n-choice" data-idx="${i}">` +
+        `<span class="t">${esc(c.text || "（未填文字）")}</span>` +
+        (c.next ? `<span class="n">→ ${c.next}</span>` : ``) + `</div>`).join("");
+    const dfId = editor.addNode(id, 1, n.choices.length, n.x ?? 80, n.y ?? 80,
+                                 "npc-node", {}, html);
+    idMap[dfId] = id;
+    placePorts(dfId, n.choices);
+  }
+  // 连线（output_N 对应第 N-1 个选项）
+  for (const [id, n] of Object.entries(data)) {
+    const dfFrom = dfIdOf(id);
+    n.choices.forEach((c, i) => {
+      if (c.next && data[c.next]) {
+        editor.addConnection(dfFrom, dfIdOf(c.next), `output_${i+1}`, "input_1");
+      }
+    });
+  }
+}
+function dfIdOf(id) { return +Object.keys(idMap).find(k => idMap[k] === id); }
+
+/* 端口对齐：圆点留在库标准 DOM 里（node>outputs>output_N，库靠此结构找节点），
+   只测量第 i 条选项行中心，把纵坐标写进节点的 --y(i+1) CSS 变量，由 CSS 定位圆点。 */
+function placePorts(dfId, choices) {
+  const nodeEl = editor.precanvas.querySelector(`#node-${dfId}`);
+  if (!nodeEl) return;
+  const rows = [...nodeEl.querySelectorAll(".n-choice")];
+  rows.forEach((row, i) => {
+    const cy = row.offsetTop + row.offsetHeight / 2;
+    nodeEl.style.setProperty(`--y${i+1}`, cy + "px");
+  });
+}
+
+/* ===== 画布 → 模型：拉线/删线时同步 next。
+   注意：此版本 Drawflow 的 on 回调直接收到 detail 对象（不是 DOM 事件）。 ===== */
+function choiceIdx(cls) { return parseInt(String(cls).replace("output_",""),10)-1; }
+editor.on("connectionCreated", d => {
+  const from = idMap[d.output_id], to = idMap[d.input_id];
+  const i = choiceIdx(d.output_class);
+  if (from && to && DATA[from]?.choices[i]) {
+    DATA[from].choices[i].next = to;
+    renderCode();
+  }
+});
+editor.on("connectionRemoved", d => {
+  const from = idMap[d.output_id], i = choiceIdx(d.output_class);
+  if (from && DATA[from]?.choices[i]) { delete DATA[from].choices[i].next; renderCode(); }
+});
+
+/* 节点删除（右键菜单删库自带节点；同步模型后重建保持一致）。回调参数直接是节点数字 id */
+editor.on("nodeRemoved", dfId => {
+  const id = idMap[dfId];
+  if (!id) return;
+  delete DATA[id];
+  Object.values(DATA).forEach(n => n.choices.forEach(c => { if (c.next === id) delete c.next; }));
+  renderGraph(DATA);
+});
+
+/* ===== JSON 面板 ===== */
+function publicData() {
+  const out = {};
+  for (const [id, n] of Object.entries(DATA)) {
+    out[id] = { text:n.text, choices:n.choices.map(c => {
+      const o = { text:c.text }; if (c.next) o.next=c.next; return o;
+    })};
+  }
+  return out;
+}
+function renderCode() { $("code").value = JSON.stringify(publicData(), null, 2); }
+
+$("btn-copy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("code").value); $("btn-copy").textContent="已复制";
+        setTimeout(()=>$("btn-copy").textContent="复制", 1200); }
+  catch(_) { $("code").select(); }
+};
+$("btn-apply").onclick = () => {
+  try {
+    const obj = JSON.parse($("code").value);
+    // 补坐标（编辑 JSON 时不带 x/y），新节点自动阶梯摆放
+    let k = 0;
+    for (const [id, n] of Object.entries(obj)) {
+      if (n.x == null) { n.x = 60 + (k%3)*340; n.y = 90 + Math.floor(k/3)*220; }
+      if (!Array.isArray(n.choices)) n.choices = [];
+      k++;
+    }
+    DATA = obj;
+    renderGraph(DATA);
+    flash("应用成功");
+  } catch (err) { alert("JSON 解析失败：" + err.message); }
+};
+function flash(msg) {
+  const b = $("btn-apply"); const old = b.textContent; b.textContent = msg;
+  setTimeout(()=>b.textContent=old, 1000);
+}
+
+/* 缩放（库官方 API） */
+$("zin").onclick = () => editor.zoom_in();
+$("zout").onclick = () => editor.zoom_out();
+$("zreset").onclick = () => editor.zoom_reset();
+
+/* ===== 控制台 API：不用截图即可用代码驱动画布 ===== */
+window.graph = {
+  help() {
+    console.log([
+      "graph.export()            查看当前 nodes JSON",
+      "graph.addNode('id', x, y, '台词')  新增卡片",
+      "graph.addChoice('greet', '选项文字', 'secret')  给卡片加选项并连线",
+      "graph.connect('greet', 1, 'secret')  第1个选项(0起)连到目标",
+      "graph.disconnect('greet', 1)        删除某选项的连线",
+      "graph.load({...})        用 JSON 整体替换并重建",
+      "graph.nodes()            查看 drawflow 原始序列化（含坐标）",
+    ].join("\n"));
+  },
+  export: () => publicData(),
+  nodes: () => editor.export(),
+  addNode(id, x=80, y=80, text="新节点") {
+    if (DATA[id]) return console.warn("已存在节点：" + id);
+    DATA[id] = { x, y, text, choices: [] };
+    renderGraph(DATA);
+  },
+  addChoice(fromId, text, nextId) {
+    const c = { text }; if (nextId) c.next = nextId;
+    DATA[fromId].choices.push(c);
+    renderGraph(DATA);
+  },
+  connect(fromId, choiceIdx, toId) {
+    if (!DATA[fromId].choices[choiceIdx]) DATA[fromId].choices[choiceIdx] = { text:"" };
+    DATA[fromId].choices[choiceIdx].next = toId;
+    renderGraph(DATA);
+  },
+  disconnect(fromId, choiceIdx) {
+    delete DATA[fromId].choices[choiceIdx]?.next;
+    renderGraph(DATA);
+  },
+  load(obj) { DATA = obj; renderGraph(DATA); renderCode(); },
+};
+
+renderGraph(DATA);
+renderCode();
+</script>
+</body>
+</html>

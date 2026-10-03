@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对话/事件 流程图样式 Demo</title>
+<style>
+/* ============================================================
+   标准流程图样式 Demo（可双击直接打开，纯静态）
+   符号：● 胶囊=起止  ▭ 矩形=过程（对话台词） ◇ 菱形=判断（条件）
+         ▱ 平行四边形=动作（效果）   箭头边：是=绿 / 否=灰红
+   双皮肤：dark-glass（暗色毛玻璃，与编辑器同体系）/ paper（浅色纸张）
+   ============================================================ */
+:root { --accent:#4d9fff; --font:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; overflow:hidden; font-family:var(--font); }
+
+body[data-theme="dark"] {
+  --bg:#141518; --canvas:#1a1b1f; --grid:rgba(255,255,255,.035);
+  --proc-bg:rgba(38,39,43,.9); --proc-border:#4a4f5c; --proc-text:#e8eaee; --proc-sub:#9aa0ab;
+  --term-bg:rgba(30,46,60,.9); --term-border:#4d9fff;
+  --dec-bg:rgba(50,42,22,.92); --dec-border:#f0b35e; --dec-text:#f3d9a6;
+  --act-bg:rgba(24,48,36,.92); --act-border:#4ade80; --act-text:#a7f3c5;
+  --edge:#6b7280; --edge-yes:#4ade80; --edge-no:#9ca3af;
+  --edge-label-bg:#23252a; --panel-bg:rgba(30,31,34,.92); --panel-border:#3a3d45;
+  --swim:#34383f; --title:#fff; --muted:#9aa0ab;
+  color-scheme:dark;
+}
+body[data-theme="paper"] {
+  --bg:#eceff3; --canvas:#f7f8fa; --grid:rgba(30,41,59,.07);
+  --proc-bg:#ffffff; --proc-border:#aab4c2; --proc-text:#1f2937; --proc-sub:#6b7280;
+  --term-bg:#e8f1ff; --term-border:#2563eb;
+  --dec-bg:#fff7e0; --dec-border:#d97706; --dec-text:#92400e;
+  --act-bg:#e9f9ef; --act-border:#16a34a; --act-text:#166534;
+  --edge:#64748b; --edge-yes:#16a34a; --edge-no:#94a3b8;
+  --edge-label-bg:#ffffff; --panel-bg:#ffffff; --panel-border:#d6dbe3;
+  --swim:#cbd2dd; --title:#0f172a; --muted:#64748b;
+  color-scheme:light;
+}
+body { background:var(--bg); color:var(--proc-text); }
+
+.demo-bar {
+  position:fixed; top:12px; left:12px; right:12px; z-index:50;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  background:var(--panel-bg); border:1px solid var(--panel-border);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border-radius:10px; padding:8px 12px; font-size:13px;
+  box-shadow:0 8px 30px rgba(0,0,0,.18);
+}
+.demo-bar b { font-size:14px; color:var(--title); }
+.demo-bar .sep { width:1px; height:20px; background:var(--panel-border); }
+.seg { display:flex; border:1px solid var(--proc-border); border-radius:7px; overflow:hidden; }
+.seg button { border:0; background:transparent; color:var(--muted); padding:5px 12px;
+  cursor:pointer; font-family:inherit; font-size:12px; }
+.seg button.on { background:var(--accent); color:#fff; }
+.legend { display:flex; gap:12px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+.legend span { display:flex; align-items:center; gap:5px; }
+.legend i { width:22px; height:0; border-top:2px solid var(--edge); }
+.legend i.yes { border-top-color:var(--edge-yes); }
+.legend i.no { border-top:2px dashed var(--edge-no); }
+.hint { color:var(--muted); font-size:12px; margin-left:auto; }
+
+#viewport { position:fixed; inset:0; overflow:hidden; cursor:grab;
+  background:
+   linear-gradient(var(--grid) 1px, transparent 1px),
+   linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+   var(--canvas);
+  background-size:28px 28px; }
+#viewport.dragging { cursor:grabbing; }
+#world { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+#edges { position:absolute; overflow:visible; }
+#edges polyline { fill:none; stroke:var(--edge); stroke-width:1.8; }
+#edges polyline.yes { stroke:var(--edge-yes); }
+#edges polyline.no { stroke:var(--edge-no); stroke-dasharray:5 4; }
+#edges polyline.dim, .shape.dim { opacity:.12; transition:opacity .12s; }
+.shape { transition:opacity .12s, box-shadow .15s, border-color .15s; cursor:pointer; }
+.shape:hover, .shape.hl { box-shadow:0 0 0 3px rgba(77,159,255,.22), 0 6px 20px rgba(0,0,0,.2); }
+
+/* 起止：胶囊 */
+.term {
+  position:absolute; border-radius:999px;
+  background:var(--term-bg); border:2px solid var(--term-border);
+  color:var(--proc-text);
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:600; text-align:center; padding:0 14px;
+}
+/* 过程：矩形（对话台词/规则处理） */
+.proc {
+  position:absolute; border-radius:7px;
+  background:var(--proc-bg); border:1.6px solid var(--proc-border);
+  color:var(--proc-text); padding:9px 12px;
+}
+.proc .pid { font-size:10px; letter-spacing:.5px; color:var(--proc-sub);
+  text-transform:uppercase; margin-bottom:3px; }
+.proc .ptext { font-size:12.5px; line-height:1.5; }
+.proc.entry { border-left:4px solid var(--accent); }
+.proc .tag-eff { display:inline-block; font-size:10.5px; color:var(--act-text);
+  border:1px solid var(--act-border); border-radius:4px; padding:0 5px; margin-top:4px; }
+
+/* 判断：菱形（外旋转 45°，内反向放字） */
+.dec {
+  position:absolute; transform:rotate(45deg);
+  background:var(--dec-bg); border:1.8px solid var(--dec-border);
+  display:flex; align-items:center; justify-content:center;
+  border-radius:6px;
+}
+.dec .d-inner { transform:rotate(-45deg); width:118px; text-align:center;
+  font-size:12px; line-height:1.4; color:var(--dec-text); font-weight:600; }
+.dec.wide .d-inner { width:150px; }
+
+/* 动作：平行四边形（效果/输入输出） */
+.act {
+  position:absolute; transform:skewX(-16deg);
+  background:var(--act-bg); border:1.6px solid var(--act-border);
+  display:flex; align-items:center; justify-content:center;
+  border-radius:4px;
+}
+.act .a-inner { transform:skewX(16deg); font-size:12.5px; color:var(--act-text);
+  font-weight:600; text-align:center; padding:0 16px; }
+
+/* 忽略/不触发 小终止胶囊 */
+.ignore {
+  position:absolute; border-radius:999px; font-size:11px;
+  border:1.5px dashed var(--edge-no); color:var(--muted);
+  display:flex; align-items:center; justify-content:center; text-align:center; padding:0 10px;
+  background:transparent;
+}
+
+/* 边标签（是/否/选项文字） */
+.elab {
+  position:absolute; transform:translate(-50%,-50%);
+  background:var(--edge-label-bg); border:1px solid var(--proc-border);
+  color:var(--muted); font-size:11px; padding:1px 8px; border-radius:10px;
+  white-space:nowrap; pointer-events:auto; max-width:230px;
+  overflow:hidden; text-overflow:ellipsis;
+}
+.elab.yes { color:var(--edge-yes); border-color:var(--edge-yes); font-weight:700; }
+.elab.no  { color:var(--muted); border-color:var(--edge-no); }
+.elab.choice { border-style:dashed; }
+
+/* 泳道（事件视图） */
+.swim {
+  position:absolute; border:1.5px dashed var(--swim); border-radius:14px;
+}
+.swim .sw-title { position:absolute; top:-10px; left:16px; background:var(--canvas);
+  padding:0 8px; font-size:11.5px; color:var(--muted); letter-spacing:1px; }
+
+#tip { position:fixed; z-index:60; pointer-events:none; display:none; max-width:300px;
+  background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:9px;
+  padding:9px 11px; font-size:12px; line-height:1.55; box-shadow:0 10px 34px rgba(0,0,0,.28); }
+#tip h4 { font-size:12px; margin-bottom:4px; color:var(--title); }
+#tip .muted { color:var(--muted); }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="demo-bar">
+  <b>流程图样式 Demo</b>
+  <div class="seg" id="view-seg">
+    <button data-view="dialogue" class="on">对话流程（莉娅）</button>
+    <button data-view="events">事件流程（按规则泳道）</button>
+  </div>
+  <div class="sep"></div>
+  <div class="seg" id="theme-seg">
+    <button data-theme="dark" class="on">暗色毛玻璃</button>
+    <button data-theme="paper">浅色纸张</button>
+  </div>
+  <div class="sep"></div>
+  <div class="legend">
+    <span>◇ 判断</span><span><i class="yes"></i>是</span><span><i class="no"></i>否</span>
+    <span>▱ 动作/效果</span><span>● 起止</span>
+  </div>
+  <span class="hint">拖拽平移 · 滚轮缩放 · 悬停高亮上下游</span>
+</div>
+
+<div id="viewport"><div id="world">
+  <div id="swims"></div>
+  <svg id="edges">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"></path>
+      </marker>
+      <marker id="ar-yes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#4ade80"></path>
+      </marker>
+      <marker id="ar-no" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"></path>
+      </marker>
+    </defs>
+  </svg>
+  <div id="labels"></div>
+  <div id="nodes"></div>
+</div></div>
+<div id="tip"></div>
+
+<script>
+/* 坐标均为形状中心点（菱形 h/w 为旋转前边长，锚点取四个顶点） */
+const D = 150; // 菱形边长
+
+/* ============ 视图 1：对话流程图（真实数据：森林精灵莉娅） ============ */
+const DIALOGUE = {
+  width: 1180, height: 900,
+  nodes: [
+    { id:"start", shape:"term", cx:250, cy:45,  w:140, h:42, text:"开始对话" },
+    { id:"d_kill", shape:"dec", cx:250, cy:170, w:D, h:D, wide:true,
+      text:"已击败<br>洞穴哥布林？", tip:"问候规则①：enemy_killed = cave_goblin" },
+    { id:"d_key", shape:"dec", cx:250, cy:330, w:D, h:D, wide:true,
+      text:"持有<br>生锈钥匙？", tip:"问候规则②：has_item = rusty_key" },
+    { id:"greet", shape:"proc", cx:250, cy:470, w:252, h:74, entry:true,
+      title:"greet · 默认开场白",
+      text:"「你好啊，旅行者。我是这片森林的守护者。」",
+      tip:"过程节点 = NPC 的一句台词（对话树节点）" },
+    { id:"d_opt", shape:"dec", cx:250, cy:615, w:D, h:D,
+      text:"钥匙选项<br>条件成立？", tip:"选项自带 if：has_item=rusty_key；不成立则该选项对玩家隐藏" },
+    { id:"end", shape:"term", cx:250, cy:800, w:130, h:42, text:"结束对话" },
+
+    { id:"secret", shape:"proc", cx:30, cy:615, w:180, h:72,
+      title:"secret", text:"「森林深处有个神秘洞穴……需要特殊钥匙。」" },
+
+    { id:"after_kill", shape:"proc", cx:590, cy:170, w:240, h:72,
+      title:"after_kill", text:"「你真的打败了哥布林？！你做了件了不起的事！」" },
+    { id:"has_key", shape:"proc", cx:590, cy:330, w:240, h:72,
+      title:"has_key", text:"「你可以用它打开西边的洞穴门，小心里面的怪物。」" },
+
+    { id:"humble", shape:"proc", cx:920, cy:90, w:210, h:62,
+      title:"after_kill_humble", text:"「你太谦虚了……」" },
+    { id:"hard", shape:"proc", cx:920, cy:200, w:210, h:62,
+      title:"after_kill_hard", text:"「来，让我为你祝福——」" },
+    { id:"bless", shape:"act", cx:920, cy:300, w:200, h:54,
+      text:"💚 最大 HP +5", tip:"动作节点 = 选项挂的效果（max_hp）" },
+    { id:"done", shape:"proc", cx:920, cy:400, w:210, h:62,
+      title:"blessing_done", text:"「愿风永远指引你的道路。」" },
+  ],
+  edges: [
+    { p:[[250,66],[250,95]] },
+    { p:[[325,170],[590-120,170]], kind:"yes", label:"是", lx:440, ly:158 },
+    { p:[[250,245],[250,255]], kind:"no", label:"否", lx:268, ly:250 },
+    { p:[[325,330],[590-120,330]], kind:"yes", label:"是", lx:440, ly:318 },
+    { p:[[250,405],[250,433]], kind:"no", label:"否", lx:268, ly:419 },
+    // greet 三选项
+    { p:[[124,470],[30+90,579]], label:"问秘密", lx:78, ly:512, cls:"choice" },
+    { p:[[250,507],[250,540]], label:"钥匙话题（隐藏选项）", lx:360, ly:524, cls:"choice" },
+    { p:[[376,470],[430,470],[430,800],[315,800]], label:"默默离开", lx:462, ly:640, cls:"choice" },
+    // d_opt 判断
+    { p:[[325,615],[430,615],[430,366],[590-120,366]], kind:"yes", label:"是：显示", lx:430, ly:470 },
+    { p:[[250,690],[250,779]], kind:"no", label:"否：隐藏，走其他选项", lx:380, ly:735 },
+    { p:[[30-90,615],[-20,615],[-20,800],[185,800]] },
+    // after_kill 两选项
+    { p:[[710,150],[920-105,105]], label:"碰巧而已", lx:800, ly:112, cls:"choice" },
+    { p:[[710,185],[920-105,195]], label:"挺难对付的", lx:800, ly:205, cls:"choice" },
+    { p:[[920,231],[920,273]] },
+    { p:[[920,327],[920,369]], label:"选项触发", lx:988, ly:348, cls:"choice" },
+    // 右侧分支回流到结束（贴画布右边走，避免穿主干）
+    { p:[[920+105,90],[1110,90],[1110,800],[315,800]] },
+    { p:[[920+105,400],[1080,400],[1080,822],[315,822],[315,821]] },
+    // has_key → 结束
+    { p:[[590,366],[590,822],[315,822],[315,821]] },
+  ]
+};
+
+/* ============ 视图 2：事件流程（三条规则 = 三条泳道） ============ */
+const EVENTS = {
+  width: 1180, height: 640,
+  swims: [
+    { x:30,  y:20, w:330, h:600, title:"规则 1 · ITEM_TAKEN" },
+    { x:395, y:20, w:330, h:600, title:"规则 2 · ENEMY_KILLED" },
+    { x:760, y:20, w:390, h:600, title:"规则 3 · SCENE_ENTER（含 when）" },
+  ],
+  nodes: [
+    // 泳道1
+    { id:"e1s", shape:"term", cx:195, cy:62,  w:170, h:42, text:"事件：拾取物品" },
+    { id:"e1d", shape:"dec",  cx:195, cy:190, w:160, h:160, wide:true,
+      text:"物品=锈钥匙<br>且 地点=森林？", tip:"if：事件参数全等匹配（item_id + from_scene）" },
+    { id:"e1ig",shape:"ignore",cx:345,cy:190, w:70, h:34, text:"忽略" },
+    { id:"e1p", shape:"proc", cx:195, cy:340, w:250, h:60,
+      title:"rusty_key_unlocks_cave", text:"命中规则：锈钥匙解锁洞穴门" },
+    { id:"e1a", shape:"act",  cx:195, cy:450, w:220, h:54, text:"🔓 解锁 森林→洞穴" },
+    { id:"e1e", shape:"term", cx:195, cy:560, w:120, h:42, text:"结束" },
+    // 泳道2
+    { id:"e2s", shape:"term", cx:560, cy:62,  w:170, h:42, text:"事件：敌人被击败" },
+    { id:"e2d", shape:"dec",  cx:560, cy:190, w:150, h:150,
+      text:"敌人=<br>洞穴哥布林？", tip:"if：enemy_id 全等；ENEMY_KILLED 只在敌人死亡时触发" },
+    { id:"e2ig",shape:"ignore",cx:705,cy:190, w:70, h:34, text:"忽略" },
+    { id:"e2p", shape:"proc", cx:560, cy:340, w:250, h:60,
+      title:"kill_goblin_potion", text:"命中规则：击杀哥布林得药水" },
+    { id:"e2a", shape:"act",  cx:560, cy:450, w:220, h:54, text:"🧪 给予 治疗药水 ×1" },
+    { id:"e2e", shape:"term", cx:560, cy:560, w:120, h:42, text:"结束" },
+    // 泳道3（when 双判断）
+    { id:"e3s", shape:"term", cx:955, cy:62,  w:170, h:42, text:"事件：进入场景" },
+    { id:"e3d1",shape:"dec",  cx:955, cy:175, w:150, h:150,
+      text:"场景=<br>星之城？", tip:"if：scene_id 全等" },
+    { id:"e3ig1",shape:"ignore",cx:1100,cy:175,w:70, h:34, text:"忽略" },
+    { id:"e3d2",shape:"dec",  cx:955, cy:320, w:170, h:170, wide:true,
+      text:"when：持有标志<br>pass_allowed？", tip:"when：世界状态条件（flags），与 if 是 AND" },
+    { id:"e3ig2",shape:"ignore",cx:1105,cy:320,w:86, h:34, text:"不触发" },
+    { id:"e3a", shape:"act",  cx:955, cy:470, w:200, h:54, text:"💰 金币 +5" },
+    { id:"e3e", shape:"term", cx:955, cy:575, w:120, h:42, text:"结束" },
+  ],
+  edges: [
+    { p:[[195,83],[195,110]] },
+    { p:[[195,270],[195,310]], kind:"yes", label:"是", lx:213, ly:290 },
+    { p:[[275,190],[310,190]], kind:"no", label:"否", lx:292, ly:178 },
+    { p:[[195,370],[195,423]] },
+    { p:[[195,477],[195,539]] },
+
+    { p:[[560,83],[560,115]] },
+    { p:[[560,265],[560,310]], kind:"yes", label:"是", lx:578, ly:287 },
+    { p:[[635,190],[670,190]], kind:"no", label:"否", lx:652, ly:178 },
+    { p:[[560,370],[560,423]] },
+    { p:[[560,477],[560,539]] },
+
+    { p:[[955,83],[955,100]] },
+    { p:[[955,250],[955,235+10]], kind:"yes", label:"是", lx:973, ly:244 },
+    { p:[[1030,175],[1065,175]], kind:"no", label:"否", lx:1048, ly:163 },
+    { p:[[955,405],[955,443]], kind:"yes", label:"是", lx:973, ly:424 },
+    { p:[[1040,320],[1062,320]], kind:"no", label:"否", lx:1051, ly:308 },
+    { p:[[955,497],[955,554]] },
+  ]
+};
+
+/* ============ 渲染 ============ */
+let cur = null, scale = .92, tx = 20, ty = 70;
+const $ = id => document.getElementById(id);
+const byId = list => Object.fromEntries(list.map(n => [n.id, n]));
+
+function anchors(n){
+  if (n.shape === "dec") return {
+    t:[n.cx,n.cy-n.h/2], b:[n.cx,n.cy+n.h/2],
+    l:[n.cx-n.w/2,n.cy], r:[n.cx+n.w/2,n.cy] };
+  return {
+    t:[n.cx,n.cy-n.h/2], b:[n.cx,n.cy+n.h/2],
+    l:[n.cx-n.w/2,n.cy], r:[n.cx+n.w/2,n.cy] };
+}
+
+function load(view) {
+  cur = view === "dialogue" ? DIALOGUE : EVENTS;
+  cur.map = byId(cur.nodes);
+  $("nodes").innerHTML = ""; $("labels").innerHTML = ""; $("swims").innerHTML = "";
+  $("edges").querySelectorAll("polyline").forEach(p => p.remove());  // 保留 marker defs
+  // 推断每条边的起止节点（首/末点最近的形状锚点），供 hover 精确高亮
+  cur.edges.forEach((e,i) => {
+    e._from = nearestNode(e.p[0]); e._to = nearestNode(e.p[e.p.length-1]);
+    e._i = i;
+  });
+  (cur.swims||[]).forEach(s => {
+    const d = document.createElement("div"); d.className="swim";
+    d.style.left=s.x+"px"; d.style.top=s.y+"px"; d.style.width=s.w+"px"; d.style.height=s.h+"px";
+    d.innerHTML = `<span class="sw-title">${s.title}</span>`;
+    $("swims").appendChild(d);
+  });
+  cur.nodes.forEach(n => $("nodes").appendChild(renderShape(n)));
+  const svg = $("edges");
+  svg.setAttribute("width", cur.width); svg.setAttribute("height", cur.height);
+  svg.style.width = cur.width+"px"; svg.style.height = cur.height+"px";
+  cur.edges.forEach((e,i) => {
+    const pl = document.createElementNS("http://www.w3.org/2000/svg","polyline");
+    pl.setAttribute("points", e.p.map(q=>q.join(",")).join(" "));
+    if (e.kind) pl.classList.add(e.kind);
+    pl.dataset.i = i;
+    const mk = e.kind === "yes" ? "ar-yes" : e.kind === "no" ? "ar-no" : "ar";
+    pl.setAttribute("marker-end", `url(#${mk})`);
+    svg.appendChild(pl);
+    if (e.label) {
+      const l = document.createElement("div");
+      l.className = "elab " + (e.kind||"") + " " + (e.cls||"");
+      l.textContent = e.label;
+      l.style.left = e.lx+"px"; l.style.top = e.ly+"px";
+      $("labels").appendChild(l);
+    }
+  });
+  // 标签层/节点层尺寸
+  ["labels","nodes"].forEach(id => {
+    $(id).style.width = cur.width+"px"; $(id).style.height = cur.height+"px";
+    $(id).style.position = "absolute"; $(id).style.left=0; $(id).style.top=0;
+  });
+  apply();
+}
+
+function renderShape(n) {
+  const el = document.createElement("div");
+  el.className = `shape ${n.shape}`;
+  el.dataset.id = n.id;
+  el.style.left = (n.cx-n.w/2)+"px";
+  el.style.top  = (n.cy-n.h/2)+"px";
+  el.style.width = n.w+"px"; el.style.height = n.h+"px";
+  let inner = "";
+  if (n.shape === "dec") inner = `<div class="d-inner${n.wide?" wide":""}">${n.text}</div>`;
+  else if (n.shape === "act") inner = `<div class="a-inner">${n.text}</div>`;
+  else if (n.shape === "proc")
+    inner = (n.title?`<div class="pid">${n.title}</div>`:"")+`<div class="ptext">${n.text}</div>`;
+  else inner = n.text;
+  el.innerHTML = inner;
+  const tipHtml = n.tip ? `<h4>${n.title||n.text.replace(/<br>/g," ")}</h4><div class="muted">${n.tip}</div>`
+    : (n.title?`<h4>${n.title}</h4>`:"");
+  if (tipHtml) {
+    el.addEventListener("mouseenter", ev => showTip(ev, tipHtml));
+    el.addEventListener("mousemove", moveTip);
+    el.addEventListener("mouseleave", hideTip);
+  }
+  el.addEventListener("mouseenter", () => hl(n.id,true));
+  el.addEventListener("mouseleave", () => hl(null,false));
+  return el;
+}
+
+function nearestNode(pt) {
+  /**找距离点最近的形状锚点（用于推断边的起止节点） */
+  let best = null, bd = 70*70;
+  for (const n of cur.nodes) {
+    for (const q of Object.values(anchors(n))) {
+      const dd = (q[0]-pt[0])**2 + (q[1]-pt[1])**2;
+      if (dd < bd) { bd = dd; best = n.id; }
+    }
+  }
+  return best;
+}
+
+function hl(id, on) {
+  document.querySelectorAll(".shape").forEach(s=>s.classList.remove("hl","dim"));
+  document.querySelectorAll("#edges polyline").forEach(p=>p.classList.remove("dim"));
+  if (!on) return;
+  const linked = new Set([id]);
+  cur.edges.forEach(e => {
+    if (e._from === id) linked.add(e._to);
+    if (e._to === id && e._from) linked.add(e._from);
+  });
+  document.querySelectorAll(".shape").forEach(s => {
+    if (!linked.has(s.dataset.id)) s.classList.add("dim");
+    if (s.dataset.id === id) s.classList.add("hl");
+  });
+  document.querySelectorAll("#edges polyline").forEach(p => {
+    const e = cur.edges[+p.dataset.i];
+    if (e._from !== id && e._to !== id) p.classList.add("dim");
+  });
+}
+
+const tip = $("tip");
+function showTip(ev,h){ tip.innerHTML=h; tip.style.display="block"; moveTip(ev); }
+function moveTip(ev){ tip.style.left=(ev.clientX+16)+"px"; tip.style.top=(ev.clientY+14)+"px"; }
+function hideTip(){ tip.style.display="none"; }
+
+function apply(){ $("world").style.transform=`translate(${tx}px,${ty}px) scale(${scale})`; }
+const vp = $("viewport");
+let drag=false, sx=0, sy=0;
+vp.addEventListener("mousedown",e=>{drag=true;sx=e.clientX-tx;sy=e.clientY-ty;vp.classList.add("dragging");});
+window.addEventListener("mousemove",e=>{if(!drag)return;tx=e.clientX-sx;ty=e.clientY-sy;apply();});
+window.addEventListener("mouseup",()=>{drag=false;vp.classList.remove("dragging");});
+vp.addEventListener("wheel",e=>{ e.preventDefault();
+  const f=e.deltaY<0?1.12:1/1.12, ns=Math.min(2,Math.max(.3,scale*f));
+  tx=e.clientX-(e.clientX-tx)*(ns/scale); ty=e.clientY-(e.clientY-ty)*(ns/scale);
+  scale=ns; apply();
+},{passive:false});
+
+document.querySelectorAll("#view-seg button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("#view-seg button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); load(b.dataset.view);
+}));
+document.querySelectorAll("#theme-seg button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("#theme-seg button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); document.body.dataset.theme=b.dataset.theme;
+}));
+
+load("dialogue");
+apply();
+</script>
+</body>
+</html>

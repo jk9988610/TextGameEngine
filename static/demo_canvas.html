@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>画布 demo · 第 1 步：拉线 = 写选项</title>
+<style>
+:root {
+  --bg:#141518; --canvas:#1a1b1f; --grid:rgba(255,255,255,.035);
+  --card-bg:rgba(37,38,40,.88); --card-border:#3a3d45; --card-border-hl:#4d9fff;
+  --text:#e6e8ec; --sub:#8b909b;
+  --edge:#6b7280; --edge-new:#4d9fff;
+  --panel-bg:rgba(26,27,31,.94); --panel-border:#2f3239;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; overflow:hidden;
+  font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+
+#hint {
+  position:fixed; top:12px; left:12px; z-index:40;
+  background:rgba(30,31,34,.9); border:1px solid #3a3d45; border-radius:8px;
+  padding:8px 12px; font-size:12px; color:var(--sub); line-height:1.7;
+}
+#hint b { color:var(--text); }
+
+#viewport {
+  position:fixed; inset:0; overflow:hidden;
+  cursor: grab;
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    var(--canvas);
+  background-size:28px 28px;
+}
+#viewport.panning { cursor: grabbing; }
+#world { position:absolute; left:0; top:0; transform-origin:0 0; }
+#edges, #cards, #ghosts { position:absolute; left:0; top:0; }
+#edges { overflow:visible; }
+#edges path { fill:none; stroke:var(--edge); stroke-width:1.8; pointer-events:stroke; cursor:pointer; }
+#edges path:hover { stroke:var(--card-border-hl); }
+#edges path.new { stroke:var(--edge-new); stroke-dasharray:6 4; }
+
+/* 等宽统一卡片 */
+.card {
+  position:absolute; width:260px;
+  background:var(--card-bg); border:1.5px solid var(--card-border);
+  border-radius:10px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:0 6px 22px rgba(0,0,0,.28);
+  user-select:none;
+}
+.card.sel { border-color:var(--card-border-hl); box-shadow:0 0 0 3px rgba(77,159,255,.16); }
+.card-head {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 11px; border-bottom:1px solid var(--card-border);
+  font-size:11px; color:var(--sub); letter-spacing:.5px;
+}
+.card-head .cid { text-transform:uppercase; }
+.card-head .del { margin-left:auto; cursor:pointer; color:var(--sub); }
+.card-head .del:hover { color:#f87171; }
+.card-text {
+  padding:8px 11px; font-size:12.5px; line-height:1.55; color:var(--text);
+  white-space:pre-wrap; cursor:text;
+}
+.choices { border-top:1px solid var(--card-border); }
+.choice-row {
+  position:relative; display:flex; align-items:center; gap:7px;
+  padding:6px 11px 6px 16px; font-size:12px; color:var(--text);
+  border-top:1px solid rgba(255,255,255,.04);
+}
+.choice-row::before {
+  content:""; position:absolute; left:7px; top:50%; width:5px; height:5px;
+  border-radius:50%; background:var(--sub);
+}
+.choice-row .ch-text { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.choice-row .ch-next { font-size:10.5px; color:var(--card-border-hl); }
+.choice-row .ch-del { cursor:pointer; color:var(--sub); }
+.choice-row .ch-del:hover { color:#f87171; }
+.add-choice {
+  width:100%; border:0; border-top:1px solid var(--card-border);
+  background:transparent; color:var(--sub); font-size:11.5px;
+  padding:6px; cursor:pointer; border-radius:0 0 10px 10px; font-family:inherit;
+}
+.add-choice:hover { color:var(--card-border-hl); }
+
+/* 卡片上的拉线锚点（右边小圆） */
+.port {
+  position:absolute; right:-7px; top:50%; transform:translateY(-50%);
+  width:14px; height:14px; border-radius:50%;
+  background:var(--canvas); border:2px solid var(--card-border-hl);
+  cursor:crosshair; z-index:5;
+}
+.port:hover { background:var(--card-border-hl); }
+/* 悬停目标高亮 */
+.card.drop-target { border-color:#4ade80; box-shadow:0 0 0 3px rgba(74,222,128,.18); }
+
+/* 右侧常驻代码面板：画布不是黑盒 */
+#codepanel {
+  position:fixed; top:52px; right:12px; bottom:12px; width:330px; z-index:30;
+  background:var(--panel-bg); border:1px solid var(--panel-border);
+  border-radius:10px; display:flex; flex-direction:column; overflow:hidden;
+}
+#codepanel .cp-head {
+  padding:8px 12px; font-size:12px; color:var(--sub);
+  border-bottom:1px solid var(--panel-border); letter-spacing:.5px;
+}
+#codepanel pre {
+  flex:1; overflow:auto; padding:10px 12px; font-size:11.5px; line-height:1.6;
+  color:#c8d4e8; font-family:Consolas,"Courier New",monospace;
+}
+</style>
+</head>
+<body>
+
+<div id="hint">
+  <b>第 1 步 demo：拉线 = 写选项</b><br>
+  · <b>中键按住</b>拖动画布（左键留给卡片）<br>
+  · 从卡片右缘<b>蓝色小圆点</b>拖到另一张卡片 = 自动生成一条选项<br>
+  · 拖到已有连线的目标上松开 = 改连目标；点「✕」删选项/线<br>
+  · 右侧实时显示真实数据 JSON（画布不是黑盒）
+</div>
+
+<div id="viewport"><div id="world">
+  <svg id="edges" width="3000" height="2000" style="width:3000px;height:2000px;">
+    <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker></defs>
+  </svg>
+  <div id="cards" style="width:3000px;height:2000px;"></div>
+</div></div>
+
+<div id="codepanel">
+  <div class="cp-head">npc_dialogues.json · nodes（实时）</div>
+  <pre id="code"></pre>
+</div>
+
+<script>
+/* ============ 真实数据结构（M5 格式），只保留对话树部分 ============ */
+const DATA = {
+  greet: {
+    x: 80, y: 120,
+    text: "你好啊，旅行者。我是这片森林的守护者。",
+    choices: [
+      { text: "这片森林里有什么秘密吗？", next: "secret" },
+      { text: "（默默离开）" },
+    ]
+  },
+  secret: {
+    x: 470, y: 70,
+    text: "森林深处有个神秘洞穴，被锁住了，需要特殊钥匙。",
+    choices: []
+  }
+};
+
+const CARD_W = 260;
+let $ = id => document.getElementById(id);
+let panX = 30, panY = 60, scale = 1;
+
+/* ---------- 渲染 ---------- */
+function render() {
+  renderCards();
+  renderEdges();
+  renderCode();
+}
+function renderCards() {
+  const box = $("cards"); box.innerHTML = "";
+  for (const [id, n] of Object.entries(DATA)) {
+    const card = document.createElement("div");
+    card.className = "card"; card.dataset.id = id;
+    card.style.left = n.x + "px"; card.style.top = n.y + "px";
+    card.innerHTML =
+      `<div class="card-head"><span class="cid">${id}</span></div>
+       <div class="card-text">${esc(n.text)}</div>
+       <div class="choices"></div>
+       <button class="add-choice" type="button">+ 选项（下一步 demo 才支持编辑文字）</button>
+       <span class="port" title="拖到另一张卡片建立选项"></span>`;
+    const chBox = card.querySelector(".choices");
+    n.choices.forEach((c, idx) => {
+      const row = document.createElement("div"); row.className = "choice-row";
+      row.innerHTML = `<span class="ch-text">${esc(c.text || "（未填文字）")}</span>` +
+        (c.next ? `<span class="ch-next">→ ${c.next}</span>` : ``) +
+        `<span class="ch-del" title="删除该选项/连线">✕</span>`;
+      row.querySelector(".ch-del").onclick = () => { n.choices.splice(idx,1); render(); };
+      chBox.appendChild(row);
+    });
+    card.querySelector(".add-choice").onclick = () => {
+      n.choices.push({ text: "" }); render();
+    };
+    box.appendChild(card);
+  }
+}
+
+/* 边：从源卡右缘（按选项行高度）到目标卡左缘 */
+function edgeEndpoints(fromId, choiceIdx) {
+  const from = DATA[fromId];
+  const a = document.querySelector(`.card[data-id="${fromId}"]`);
+  if (!a) return null;
+  // 起点：头部+文本区之后，第 idx 个选项行的中心
+  const headH = a.querySelector(".card-head").offsetHeight;
+  const textH = a.querySelector(".card-text").offsetHeight;
+  const rowH = 31; // choice-row 高度
+  const sy = from.y + headH + textH + rowH * (choiceIdx + .5);
+  const sx = from.x + CARD_W;
+  const toId = from.choices[choiceIdx].next;
+  const to = DATA[toId];
+  return { sx, sy, ex: to.x, ey: to.y + 34, mx: (sx + to.x) / 2, toId };
+}
+function renderEdges() {
+  const svg = $("edges");
+  svg.querySelectorAll("path").forEach(p => p.remove());
+  for (const [id, n] of Object.entries(DATA)) {
+    n.choices.forEach((c, idx) => {
+      if (!c.next || !DATA[c.next]) return;
+      const e = edgeEndpoints(id, idx);
+      const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d",
+        `M ${e.sx} ${e.sy} C ${e.mx} ${e.sy}, ${e.mx} ${e.ey}, ${e.ex} ${e.ey}`);
+      p.setAttribute("marker-end", "url(#ar)");
+      svg.appendChild(p);
+    });
+  }
+}
+function renderCode() {
+  const out = {};
+  for (const [id, n] of Object.entries(DATA)) {
+    out[id] = { text: n.text, choices: n.choices.map(c => {
+      const o = { text: c.text }; if (c.next) o.next = c.next; return o;
+    })};
+  }
+  $("code").textContent = JSON.stringify(out, null, 2);
+}
+function esc(s){ return (s||"").replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function screenToWorld(x,y){ return { x:(x-panX)/scale, y:(y-panY)/scale }; }
+function cardAt(wx,wy){
+  for (const [id,n] of Object.entries(DATA)) {
+    const h = cardHeight(id);
+    if (wx>=n.x && wx<=n.x+CARD_W && wy>=n.y && wy<=n.y+h) return id;
+  }
+  return null;
+}
+function cardHeight(id){ return document.querySelector(`.card[data-id="${id}"]`)?.offsetHeight || 160; }
+
+/* ---------- 中键拖画布 ---------- */
+const vp = $("viewport");
+let panning=false, psx=0, psy=0;
+vp.addEventListener("mousedown", e => {
+  if (e.button !== 1) return;               // 只响应中键
+  e.preventDefault();
+  panning=true; psx=e.clientX-panX; psy=e.clientY-panY; vp.classList.add("panning");
+});
+window.addEventListener("mousemove", e => { if(panning){ panX=e.clientX-psx; panY=e.clientY-psy; apply(); }});
+window.addEventListener("mouseup", () => { panning=false; vp.classList.remove("panning"); });
+vp.addEventListener("auxclick", e => e.preventDefault()); // 禁中键自动滚动
+function apply(){ $("world").style.transform=`translate(${panX}px,${panY}px) scale(${scale})`; }
+vp.addEventListener("wheel", e => { e.preventDefault();
+  const f=e.deltaY<0?1.12:1/1.12, ns=Math.min(1.6,Math.max(.4,scale*f));
+  panX=e.clientX-(e.clientX-panX)*(ns/scale); panY=e.clientY-(e.clientY-panY)*(ns/scale);
+  scale=ns; apply();
+},{passive:false});
+
+/* ---------- 从端口拉线 = 建/改选项 ---------- */
+let linking = null;  // {fromId}
+const svg = $("edges");
+
+document.addEventListener("mousedown", e => {
+  const port = e.target.closest?.(".port");
+  if (!port) return;
+  e.preventDefault();
+  const fromId = port.closest(".card").dataset.id;
+  linking = { fromId };
+  document.querySelectorAll(".card").forEach(c => c.classList.add("linking"));
+});
+document.addEventListener("mousemove", e => {
+  if (!linking) return;
+  let ghost = svg.querySelector("path.new");
+  if (!ghost) {
+    ghost = document.createElementNS("http://www.w3.org/2000/svg","path");
+    ghost.classList.add("new");
+    svg.appendChild(ghost);
+  }
+  const from = DATA[linking.fromId];
+  const sx = from.x + CARD_W, sy = from.y + 30;
+  const w = screenToWorld(e.clientX, e.clientY);
+  ghost.setAttribute("d", `M ${sx} ${sy} C ${(sx+w.x)/2} ${sy}, ${(sx+w.x)/2} ${w.y}, ${w.x} ${w.y}`);
+  // 目标高亮
+  document.querySelectorAll(".card").forEach(c => c.classList.remove("drop-target"));
+  const tid = cardAt(w.x, w.y);
+  if (tid && tid !== linking.fromId)
+    document.querySelector(`.card[data-id="${tid}"]`)?.classList.add("drop-target");
+});
+document.addEventListener("mouseup", e => {
+  if (!linking) return;
+  const w = screenToWorld(e.clientX, e.clientY);
+  const tid = cardAt(w.x, w.y);
+  document.querySelectorAll(".card").forEach(c => c.classList.remove("linking","drop-target"));
+  svg.querySelector("path.new")?.remove();
+
+  if (tid && tid !== linking.fromId) {
+    const from = DATA[linking.fromId];
+    // 复用第一条空选项；否则新增一条。next 写入即"自动写内容"
+    let ch = from.choices.find(c => !c.next);
+    if (!ch) { ch = { text: "" }; from.choices.push(ch); }
+    ch.next = tid;
+    render();
+  }
+  linking = null;
+});
+
+apply();
+render();
+</script>
+</body>
+</html>
