@@ -391,8 +391,68 @@ function renderCombat(d) {
 }
 
 // PROTOTYPE-GAME：Beat 制战斗 —— 待试玩验证后抽离，勿当通用API
+const battleResultPanel = document.getElementById('battle-result-panel');
+const itemPopupPanel = document.getElementById('item-popup-panel');
+
+function showItemPopup(name, desc) {
+    /** 拾取物品后的道具介绍弹窗 */
+    document.getElementById('item-popup-name').textContent = `获得物品：${name}`;
+    document.getElementById('item-popup-desc').textContent = desc || '一件普通的物品。';
+    itemPopupPanel.style.display = 'block';
+}
+document.getElementById('item-popup-close-btn').addEventListener('click', () => {
+    itemPopupPanel.style.display = 'none';
+});
+
+function showBattleResult(victory) {
+    /** 战斗胜利结算：金币自动入账；掉落物在弹窗里点击拾取 */
+    document.getElementById('result-title').textContent = `战胜了 ${victory.enemy}！`;
+    document.getElementById('result-gold').textContent =
+        victory.gold > 0 ? `获得金币：${victory.gold}` : '';
+    const wrap = document.getElementById('result-items-wrap');
+    const box = document.getElementById('result-items');
+    box.innerHTML = '';
+    if (!victory.items || victory.items.length === 0) {
+        wrap.style.display = 'none';
+    } else {
+        wrap.style.display = '';
+        victory.items.forEach(item => {
+            const btn = document.createElement('button');
+            btn.className = 'combat-item-btn';
+            btn.style.display = 'block';
+            btn.style.margin = '0.3rem 0';
+            btn.textContent = `拾取：${item.name}`;
+            btn.addEventListener('click', async () => {
+                const r = await doActionReturn('take_item', item.id);
+                if (r.success) {
+                    btn.disabled = true;
+                    btn.textContent = `已拾取：${item.name}`;
+                    showItemPopup(item.name, item.description);
+                } else {
+                    showActionMsg(r.message || '拾取失败');
+                }
+            });
+            box.appendChild(btn);
+        });
+    }
+    battleResultPanel.style.display = 'block';
+}
+document.getElementById('result-close-btn').addEventListener('click', async () => {
+    battleResultPanel.style.display = 'none';
+    await fetchState();
+});
+
+async function doActionReturn(type, target) {
+    const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, target })
+    });
+    return res.json();
+}
+
 async function beatAction(action) {
-    /** 提交本拍主动作 attack/block/dodge/disengage，同拍揭晓后刷新 */
+    /** 提交本拍主动作 attack/block/dodge/charge/disengage，同拍揭晓后刷新 */
     const res = await fetch('/api/combat/beat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,6 +466,10 @@ async function beatAction(action) {
     renderCombatLog(data);
     showActionMsg(data.message || '');
     await fetchState();
+    // 胜利（含同归于尽的惨胜）：先看战斗日志，再弹结算，由玩家点击拾取掉落
+    if (data.victory) {
+        showBattleResult(data.victory);
+    }
 }
 
 function renderCombatLog(data) {

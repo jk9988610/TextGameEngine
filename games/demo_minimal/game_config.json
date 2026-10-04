@@ -39,8 +39,8 @@
     "cost_dodge": 2,
     "cost_charge": 0,
     "cost_disengage": 2,
-    "pattern": ["bash", "bash", "heavy", "brace"],
     "heavy_damage": 10,
+    "low_hp_ratio": 0.25,
     "player_heavy_bonus": 2,
     "player_heavy_mult": 2
   },

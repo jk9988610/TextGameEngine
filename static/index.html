@@ -275,6 +275,26 @@
             </div>
         </div>
 
+        <!-- PROTOTYPE-GAME：战斗结算弹窗（胜利掉落点击拾取） -->
+        <div class="combat-panel" id="battle-result-panel" style="display:none;">
+            <h2 id="result-title" style="margin:0 0 0.4rem;">战斗胜利</h2>
+            <div id="result-gold" style="margin-bottom:0.5rem;"></div>
+            <div id="result-items-wrap">
+                <div class="section-title" style="margin:0.3rem 0;">战利品（点击拾取）</div>
+                <div id="result-items"></div>
+            </div>
+            <div style="margin-top:0.6rem;">
+                <button class="combat-btn" id="result-close-btn">结束战斗</button>
+            </div>
+        </div>
+
+        <!-- PROTOTYPE-GAME：道具介绍弹窗（拾取物品后告知那是什么） -->
+        <div class="combat-panel" id="item-popup-panel" style="display:none; max-width:380px;">
+            <h3 id="item-popup-name" style="margin:0 0 0.4rem;"></h3>
+            <p id="item-popup-desc" style="margin:0 0 0.6rem; line-height:1.6;"></p>
+            <button class="combat-btn" id="item-popup-close-btn">收下了</button>
+        </div>
+
     </main>
 
     <!-- 底部状态栏：左侧状态记录，右侧功能按钮 -->
