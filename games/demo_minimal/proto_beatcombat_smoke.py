@@ -5,7 +5,9 @@
 #
 # demo：玩家 HP50/防2/铁剑；史莱姆 HP26/攻6/防1。
 # L2 决策器（拍首纯函数锁定，不偷看玩家本拍选择）：
-#   承诺重击 > 打断喘息 > 玩家蓄力→撞击反制 > 残血(≤25%)蜷缩 > 节奏 bash→charge→重击
+#   承诺重击 > 打断喘息 > 闪避后承诺撞击 > 玩家蓄力且健康→闪避
+#   > 玩家蓄力且残血→撞击 > 残血蜷缩 > 节奏 bash→charge→重击
+# 模糊征兆：普通拍面显示动态叙述；重击被躲后的破绽拍才显示具体动作名
 """Beat 制战斗原型冒烟（《森林试炼》，L2 敌人决策器）。退出码 0=全过。"""
 import os
 import sys
@@ -49,6 +51,9 @@ def ehp(c):
 r.section("T1 节奏与拍面")
 c = battle_new()
 r.check("b1-bash", (face(c)["beat"], face(c)["intent"]) == (1, "bash"))
+r.check("b1-ambiguous-telegraph",
+        face(c)["intent_label"] == "敌人的动作"
+        and "弹簧" in face(c)["intent_hint"], face(c))
 beat(c, "block")                        # 48
 r.check("b2-charge", face(c)["intent"] == "charge", face(c))
 beat(c, "block")                        # 蓄力拍无伤 48
@@ -100,7 +105,7 @@ r.check("b4-brace-lowhp", face(c)["intent"] == "brace", face(c))  # 4≤6.5 残�
 r.section("T5 残血龟息与蓄力反制")
 out = beat(c, "charge")                 # b4 brace 拍玩家蓄力成功
 r.check("charge-on-brace", face(c)["charged"] is True, out)
-r.check("b5-bash-vs-charge", face(c)["intent"] == "bash", face(c))  # ③覆盖④
+r.check("b5-bash-vs-charge", face(c)["intent"] == "bash", face(c))  # 残血不躲
 out = beat(c, "attack")                 # 重击 4-22 击杀；吃 bash 4：38→34
 r.check("heavy-kill-through-bash",
         out.get("defeated") == "slime" and hp(c) == 34, (out, hp(c)))
@@ -114,7 +119,8 @@ out = beat(c, "dodge")                  # b3 heavy 0 伤
 r.check("dodge-0", hp(c) == 48 and out.get("enemy_flaw") is True)
 b = face(c)
 r.check("flaw-see-b4-bash",
-        b["enemy_flaw"] is True and b["beat"] == 4 and b["intent"] == "bash", b)
+        b["enemy_flaw"] is True and b["beat"] == 4 and b["intent"] == "bash"
+        and "撞击" in b["intent_hint"], b)
 beat(c, "block")                        # 46，破绽过期
 r.check("flaw-expired", face(c)["enemy_flaw"] is False)
 
@@ -161,7 +167,8 @@ c.combat_start("slime")
 b = face(c)
 r.check("reengage-reset",
         ehp(c) == 26 and b["beat"] == 1 and b["ap"] == 1 and b["intent"] == "bash"
-        and not b["charged"] and not b["struggle"] and not b["enemy_flaw"], b)
+        and not b["charged"] and not b["struggle"]
+        and not b["enemy_flaw"] and not b.get("player_flaw"), b)
 
 # ---- T10 同归于尽：磨到残血后在承诺重击拍换命（惨胜）----
 r.section("T10 同归于尽")
@@ -193,6 +200,39 @@ for path, body in (("/api/combat/attack", {}), ("/api/combat/use-item", {"item_i
                    ("/api/combat/defend", {}), ("/api/combat/flee", {})):
     status, _ = c.post(path, body)
     r.check(f"409-{path}", status == 409, status)
+
+# ---- T12 健康时看见蓄力→闪避；重击落空→破绽+承诺撞击；残血仍不躲（T5）----
+r.section("T12 敌人闪避")
+c = battle_new()
+beat(c, "attack")                       # b1 bash 换血：46 / 17
+beat(c, "attack")                       # b2 charge 打断：46 / 8（8>6.5 未残血）
+r.check("b3-recover-for-dodge", face(c)["intent"] == "recover", face(c))
+out = beat(c, "charge")                 # 喘息拍蓄力成功
+r.check("charge-on-recover", face(c)["charged"] is True, out)
+r.check("b4-dodge-healthy", face(c)["intent"] == "dodge", face(c))
+ehp_before = ehp(c)
+out = beat(c, "attack")                 # 重击被躲：0 伤，破绽
+r.check("heavy-whiff",
+        ehp(c) == ehp_before and hp(c) == 46
+        and out.get("player_flaw") is True
+        and any("躲开" in s or "落了空" in s or "落空" in s for s in out["log"]),
+        (ehp(c), hp(c), out))
+b = face(c)
+r.check("promised-bash-after-dodge",
+        b["intent"] == "bash" and b["player_flaw"] is True, b)
+beat(c, "block")                        # 吃撞击格挡 46-2=44，破绽过期
+r.check("flaw-expired-after-bash", face(c)["player_flaw"] is False)
+r.check("no-second-dodge", face(c)["intent"] != "dodge", face(c))
+
+# 闪避拍再蓄力：承诺撞击优先，不会连躲
+c = battle_new()
+beat(c, "attack")
+beat(c, "attack")
+beat(c, "charge")
+r.check("setup-dodge", face(c)["intent"] == "dodge")
+out = beat(c, "charge")                 # 闪避拍蓄力成功（0 伤）
+r.check("recharge-on-dodge", face(c)["charged"] is True, out)
+r.check("promised-bash-not-dodge", face(c)["intent"] == "bash", face(c))
 
 removed = cleanup_qa_saves()
 print(f"（清理 qa_ 存档 {removed} 行）")

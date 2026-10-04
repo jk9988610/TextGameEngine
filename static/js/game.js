@@ -343,10 +343,12 @@ function renderCombat(d) {
     if (inBeat) {
         fleeBtn.style.display = 'none';
         defendBtn.style.display = 'none';
-        beatIntentEl.textContent = `第 ${beat.beat} 拍 · 史莱姆意图：【${beat.intent_label}】${beat.intent_hint ? '——' + beat.intent_hint : ''}`;
+        beatIntentEl.textContent = `第 ${beat.beat} 拍 · 史莱姆的动作表现：${beat.intent_hint || '暂时无法判断'}`;
         const pips = '●'.repeat(beat.ap) + '○'.repeat(Math.max(0, beat.ap_max - beat.ap));
         beatApEl.textContent = `行动力 AP：${pips}（${beat.ap}/${beat.ap_max}）`
             + (beat.charged ? '　【蓄力就绪：本拍攻击=重击】' : '')
+            + (beat.player_flaw ? '　【破绽：重心不稳】' : '')
+            + (beat.enemy_flaw ? '　【看穿：敌人动作已明确】' : '')
             + (beat.struggle ? '　【挣扎：本拍闪避/脱离 -1AP】' : '');
         const actionNames = { attack: '攻击', block: '格挡', dodge: '闪避', charge: '蓄力', disengage: '脱离' };
         beatActions.querySelectorAll('[data-beat]').forEach(btn => {
