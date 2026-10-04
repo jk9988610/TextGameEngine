@@ -13,6 +13,23 @@ import random
 from engine import SessionManager, SaveManager, AuthManager
 from engine.editor_manager import EditorManager
 
+# PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API
+# 《森林试炼》专用脱离原型；切到其他工程时由配置开关安全降级（按钮隐藏、接口拒答）
+from games.demo_minimal.proto_retreat import (
+    try_disengage, retreat_config, tick_recover, cancel_detach, is_detached,
+)
+# PROTOTYPE-GAME：战斗防御 —— 待试玩验证后抽离，勿当通用API
+from games.demo_minimal.proto_defend import try_defend, defend_config
+# PROTOTYPE-GAME：先后手（按攻击判定） —— 待试玩验证后抽离，勿当通用API
+from games.demo_minimal.proto_turnorder import (
+    enemy_attacks_first, attack_enemy_first, drink_enemy_first, enemy_strike,
+)
+# PROTOTYPE-GAME：Beat 制战斗（AP+意图） —— 待试玩验证后抽离，勿当通用API
+# 启用后旧战斗动作路由（攻击/喝药/防御/脱离）统一拒答，改走 /api/combat/beat
+from games.demo_minimal.proto_beatcombat import (
+    beat_config, init_engagement, describe as beat_describe, resolve as beat_resolve,
+)
+
 # ---------- Flask 初始化 ----------
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -194,6 +211,12 @@ def start_combat():
         return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
     data = request.json
     result = e["combat_system"].start_battle(data.get("enemy_id", ""))
+    # PROTOTYPE-GAME：战斗脱离 —— 玩家主动接战（含休整中重新挑战）即取消恢复计时
+    if result.get("success"):
+        cancel_detach(e["game_state"])
+        # PROTOTYPE-GAME：Beat 制 —— 每次接战（含残血续战）重置 AP 与拍序号
+        if beat_config(GAME_DATA):
+            init_engagement(e["game_state"], GAME_DATA)
     return jsonify(result)
 
 
@@ -222,6 +245,8 @@ def handle_action():
     if result.get("success"):
         time_delta = _action_time(action_type, 0)
         e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + time_delta
+        # PROTOTYPE-GAME：战斗脱离 —— 行动时间推进后静默结算休整恢复（不通知前端）
+        tick_recover(e["combat_system"], e["game_state"], GAME_DATA)
 
     # 🆕 玩家做了操作 → 尝试自动存档（离线模式 + 30秒防抖）
     if result.get("success"):
@@ -277,7 +302,30 @@ def get_combat():
             it for it in e["item_system"].get_player_inventory()
             if it.get("usable")
         ]
+        # PROTOTYPE-GAME：Beat 制启用时，旧动作开关全部屏蔽，改下发拍面信息
+        if beat_config(GAME_DATA):
+            result["proto_beat"] = beat_describe(e["game_state"], GAME_DATA)
+            if result["proto_beat"] and not result["proto_beat"].get("in_battle"):
+                result["active"] = False
+        else:
+            # PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API
+            if retreat_config(GAME_DATA):
+                result["proto_retreat"] = {"enabled": True}
+            # PROTOTYPE-GAME：战斗防御 —— 启用时前端渲染「防御」按钮
+            if defend_config(GAME_DATA):
+                result["proto_defend"] = {"enabled": True}
+        # 已脱离（休整中）：底层 current_battle 保留残血，但对外隐藏战斗面板
+        if is_detached(e["game_state"]):
+            result["active"] = False
     return jsonify(result)
+
+
+def _beat_guard():
+    """Beat 制启用时，旧战斗动作接口一律拒答（前端改走 /api/combat/beat）。"""
+    if beat_config(GAME_DATA):
+        return jsonify({"success": False,
+                        "message": "当前战斗为 Beat 制，请使用 /api/combat/beat"}), 409
+    return None
 
 
 @app.route('/api/combat/attack', methods=['POST'])
@@ -285,14 +333,25 @@ def handle_attack():
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
+    guard = _beat_guard()
+    if guard:
+        return guard
     data = request.json
     # 前端无需指定武器：不传时自动使用背包中第一把武器（引擎不绑定具体物品 ID）
     weapon_id = data.get("weapon_id") or e["item_system"].first_weapon_id()
-    result = e["combat_system"].player_attack(weapon_id)
+    # PROTOTYPE-GAME：战斗脱离 —— 一出手即视为重新接战，取消休整计时
+    cancel_detach(e["game_state"])
+    # PROTOTYPE-GAME：先后手 —— 敌人更快时顺序翻转（敌先打→玩家打），否则走引擎原回合
+    if enemy_attacks_first(e["game_state"], GAME_DATA):
+        result = attack_enemy_first(e["combat_system"], e["game_state"],
+                                    GAME_DATA, weapon_id)
+    else:
+        result = e["combat_system"].player_attack(weapon_id)
     # 战斗推进游戏时间（每回合秒数由 game_config 配置）
     e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + _action_time("combat_turn", 60)
     # 🆕 战斗后也自动存档
     if result.get("success") or result.get("player_dead"):
+        tick_recover(e["combat_system"], e["game_state"], GAME_DATA)
         _maybe_autosave(e)
     return jsonify(result)
 
@@ -303,11 +362,96 @@ def handle_combat_use_item():
     e = _get_engines()
     if not e:
         return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
+    guard = _beat_guard()
+    if guard:
+        return guard
     data = request.json or {}
-    result = e["combat_system"].use_item_in_battle(data.get("item_id", ""))
+    # PROTOTYPE-GAME：战斗脱离 —— 战斗中喝药即视为继续接战，取消休整计时
+    cancel_detach(e["game_state"])
+    item_id = data.get("item_id", "")
+    # PROTOTYPE-GAME：先后手 —— 敌人更快时先挨打再回血，否则走引擎喝药回合
+    if enemy_attacks_first(e["game_state"], GAME_DATA):
+        result = drink_enemy_first(e["combat_system"], e["item_system"],
+                                   e["game_state"], GAME_DATA, item_id)
+    else:
+        result = e["combat_system"].use_item_in_battle(item_id)
     # 与攻击回合同等耗时
     e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + _action_time("combat_turn", 60)
     if result.get("success") or result.get("player_dead"):
+        tick_recover(e["combat_system"], e["game_state"], GAME_DATA)
+        _maybe_autosave(e)
+    return jsonify(result)
+
+
+# PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API
+@app.route('/api/combat/flee', methods=['POST'])
+def handle_combat_flee():
+    """战斗中脱离（《森林试炼》原型）：必定立即原地停战，双方残血保留"""
+    e = _get_engines()
+    if not e:
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
+    guard = _beat_guard()
+    if guard:
+        return guard
+    gs = e["game_state"]
+    # PROTOTYPE-GAME：先后手 —— 敌人更快时脱离要先挨一击（仍必定脱离成功），
+    # 该先制占一个回合；玩家更快时脱离无代价、不耗时（原型间组合在路由层编排）
+    enemy_first = enemy_attacks_first(gs, GAME_DATA)
+    if enemy_first:
+        strike = enemy_strike(e["combat_system"], gs, GAME_DATA)
+        if strike.get("player_dead"):
+            gs["game_time"] = gs.get("game_time", 0) + _action_time("combat_turn", 60)
+            _maybe_autosave(e)
+            return jsonify(strike)
+        result = try_disengage(e["combat_system"], gs, GAME_DATA)
+        # 日志按时间顺序：先制在前、脱离在后
+        result["log"] = strike.get("log", []) + result.get("log", [])
+        gs["game_time"] = gs.get("game_time", 0) + _action_time("combat_turn", 60)
+    else:
+        result = try_disengage(e["combat_system"], gs, GAME_DATA)
+    # 脱离状态随自动存档落盘；恢复计时由后续行动的 tick_recover 结算
+    if result.get("success") or result.get("player_dead"):
+        _maybe_autosave(e)
+    return jsonify(result)
+
+
+# PROTOTYPE-GAME：战斗防御 —— 待试玩验证后抽离，勿当通用API
+@app.route('/api/combat/defend', methods=['POST'])
+def handle_combat_defend():
+    """本回合防御：放弃攻击，承受减半伤害（《森林试炼》原型）"""
+    e = _get_engines()
+    if not e:
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
+    guard = _beat_guard()
+    if guard:
+        return guard
+    result = try_defend(e["combat_system"], e["game_state"], GAME_DATA)
+    # 防御占用一个战斗回合，与攻击/喝药同口径
+    if result.get("success") or result.get("player_dead"):
+        e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + _action_time("combat_turn", 60)
+        _maybe_autosave(e)
+    return jsonify(result)
+
+
+# PROTOTYPE-GAME：Beat 制战斗 —— 待试玩验证后抽离，勿当通用API
+@app.route('/api/combat/beat', methods=['POST'])
+def handle_combat_beat():
+    """Beat 制：提交本拍主动作 attack/block/dodge/disengage，同拍揭晓结算"""
+    e = _get_engines()
+    if not e:
+        return jsonify({"success": False, "message": "请先登录（在线模式）"}), 401
+    if not beat_config(GAME_DATA):
+        return jsonify({"success": False, "message": "当前工程未启用 Beat 战斗"}), 409
+    data = request.json or {}
+    # 重新接战统一走 /api/combat/start（「挑战」按钮：残血复用 + 重置 AP/拍序号）；
+    # 休整态直接提交动作会被原型以"你已经脱离战斗了"拒答
+    weapon_id = data.get("weapon_id") or e["item_system"].first_weapon_id()
+    result = beat_resolve(e["combat_system"], e["game_state"], GAME_DATA,
+                          data.get("action", ""), weapon_id)
+    # 每个 beat 与一次战斗回合同等耗时（脱离拍也计入）
+    if result.get("success") or result.get("player_dead"):
+        e["game_state"]["game_time"] = e["game_state"].get("game_time", 0) + _action_time("combat_turn", 60)
+        tick_recover(e["combat_system"], e["game_state"], GAME_DATA)
         _maybe_autosave(e)
     return jsonify(result)
 

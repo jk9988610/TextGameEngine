@@ -18,6 +18,32 @@
     "combat_turn": 60,
     "buy_item": 20
   },
+  "_proto_retreat": {
+    "enabled": true,
+    "recover_seconds": 600
+  },
+  "_proto_defend": {
+    "enabled": true,
+    "reduction": 0.5
+  },
+  "_proto_turnorder": {
+    "enabled": true
+  },
+  "_proto_beatcombat": {
+    "enabled": true,
+    "ap_start": 1,
+    "ap_per_beat": 1,
+    "ap_max": 3,
+    "cost_attack": 1,
+    "cost_block": 0,
+    "cost_dodge": 2,
+    "cost_charge": 0,
+    "cost_disengage": 2,
+    "pattern": ["bash", "bash", "heavy", "brace"],
+    "heavy_damage": 10,
+    "player_heavy_bonus": 2,
+    "player_heavy_mult": 2
+  },
   "event_rules": [
     {
       "id": "slime_drops_key_unlocks_cave",

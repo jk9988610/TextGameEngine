@@ -261,9 +261,25 @@ async function selectDialogueChoice(choiceIndex) {
 const combatPanel = document.getElementById('combat-panel');
 const combatLog = document.getElementById('combat-log');
 const attackBtn = document.getElementById('attack-btn');
+// PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API
+const fleeBtn = document.getElementById('flee-btn');
+// PROTOTYPE-GAME：战斗防御 —— 待试玩验证后抽离，勿当通用API
+const defendBtn = document.getElementById('defend-btn');
 let _combatActive = false;     // 跟踪弹窗激活态，用于"仅重开时回中"
 
 attackBtn.addEventListener('click', () => attackEnemy());
+fleeBtn.addEventListener('click', () => fleeCombat());
+defendBtn.addEventListener('click', () => defendCombat());
+
+// PROTOTYPE-GAME：Beat 制战斗 —— 待试玩验证后抽离，勿当通用API
+const beatBar = document.getElementById('beat-bar');
+const beatActions = document.getElementById('beat-actions');
+const classicActions = document.getElementById('classic-actions');
+const beatIntentEl = document.getElementById('beat-intent');
+const beatApEl = document.getElementById('beat-ap');
+beatActions.querySelectorAll('[data-beat]').forEach(btn => {
+    btn.addEventListener('click', () => beatAction(btn.dataset.beat));
+});
 
 // 玩家点"挑战 XX"按钮 → 主动开始/继续战斗（保留敌人残血）
 async function startEnemyCombat(enemyId) {
@@ -291,6 +307,14 @@ function renderCombat(d) {
     if (!d || !d.active) {
         combatPanel.classList.remove('active');
         _combatActive = false;
+        // PROTOTYPE-GAME：战斗脱离 —— 非战斗态隐藏脱离按钮
+        fleeBtn.style.display = 'none';
+        // PROTOTYPE-GAME：战斗防御 —— 非战斗态隐藏防御按钮
+        defendBtn.style.display = 'none';
+        // PROTOTYPE-GAME：Beat 制 —— 非战斗态隐藏意图行与四动作
+        beatBar.style.display = 'none';
+        beatActions.style.display = 'none';
+        classicActions.style.display = '';
         // 非战斗态也同步玩家数据：对话效果（祝福/回血）改了 HP 后，下次打开面板即正确
         if (d && d.player) {
             const p = d.player;
@@ -301,9 +325,43 @@ function renderCombat(d) {
         }
         return;
     }
-    if (!_combatActive) resetModalPosition(combatPanel);
+    if (!_combatActive) {
+        resetModalPosition(combatPanel);
+        // 面板重新打开（新挑战/残血续战）时清空上一场的日志，
+        // 避免旧回合（如脱离记录）残留在新战斗里与当前血量矛盾
+        combatLog.innerHTML = '<span class="log-system">战斗开始！</span>';
+    }
     _combatActive = true;
     combatPanel.classList.add('active');
+
+    // PROTOTYPE-GAME：Beat 制与旧回合制两套动作区互斥
+    const beat = d.proto_beat;
+    const inBeat = !!(beat && beat.in_battle);
+    classicActions.style.display = inBeat ? 'none' : '';
+    beatBar.style.display = inBeat ? '' : 'none';
+    beatActions.style.display = inBeat ? 'flex' : 'none';
+    if (inBeat) {
+        fleeBtn.style.display = 'none';
+        defendBtn.style.display = 'none';
+        beatIntentEl.textContent = `第 ${beat.beat} 拍 · 史莱姆意图：【${beat.intent_label}】${beat.intent_hint ? '——' + beat.intent_hint : ''}`;
+        const pips = '●'.repeat(beat.ap) + '○'.repeat(Math.max(0, beat.ap_max - beat.ap));
+        beatApEl.textContent = `行动力 AP：${pips}（${beat.ap}/${beat.ap_max}）`
+            + (beat.charged ? '　【蓄力就绪：本拍攻击=重击】' : '')
+            + (beat.struggle ? '　【挣扎：本拍闪避/脱离 -1AP】' : '');
+        const actionNames = { attack: '攻击', block: '格挡', dodge: '闪避', charge: '蓄力', disengage: '脱离' };
+        beatActions.querySelectorAll('[data-beat]').forEach(btn => {
+            const cost = (beat.costs && beat.costs[btn.dataset.beat]) ?? 0;
+            btn.disabled = beat.ap < cost;
+            const tag = btn.querySelector('small');
+            if (tag) tag.textContent = `(${cost}AP)`;
+            btn.firstChild.textContent = `${actionNames[btn.dataset.beat]} `;
+        });
+    } else {
+        // PROTOTYPE-GAME：战斗脱离 —— 仅当前工程启用脱离时显示按钮
+        fleeBtn.style.display = d.proto_retreat ? '' : 'none';
+        // PROTOTYPE-GAME：战斗防御 —— 仅当前工程启用防御时显示按钮
+        defendBtn.style.display = d.proto_defend ? '' : 'none';
+    }
 
     // 敌人
     const e = d.enemy;
@@ -318,16 +376,36 @@ function renderCombat(d) {
     document.getElementById('player-hp-bar').style.width = playerHpPct + '%';
     document.getElementById('player-hp-text').textContent = `HP: ${p.hp}/${p.max_hp}  |  ATK: ${p.attack}  |  DEF: ${p.defense}`;
 
-    // 背包里的可使用消耗品（战斗中喝药：回血但消耗一回合，敌人会反击）
+    // 背包里的可使用消耗品（旧回合制战斗喝药；Beat 制战斗内不喝药，跳过渲染）
     const itemsBox = document.getElementById('combat-items');
     itemsBox.innerHTML = '';
-    (d.usable_items || []).forEach(it => {
-        const btn = document.createElement('button');
-        btn.className = 'combat-item-btn';
-        btn.textContent = `喝：${it.name}`;
-        btn.addEventListener('click', () => useItemInCombat(it.id));
-        itemsBox.appendChild(btn);
+    if (!inBeat) {
+        (d.usable_items || []).forEach(it => {
+            const btn = document.createElement('button');
+            btn.className = 'combat-item-btn';
+            btn.textContent = `喝：${it.name}`;
+            btn.addEventListener('click', () => useItemInCombat(it.id));
+            itemsBox.appendChild(btn);
+        });
+    }
+}
+
+// PROTOTYPE-GAME：Beat 制战斗 —— 待试玩验证后抽离，勿当通用API
+async function beatAction(action) {
+    /** 提交本拍主动作 attack/block/dodge/disengage，同拍揭晓后刷新 */
+    const res = await fetch('/api/combat/beat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
     });
+    const data = await res.json();
+    if (!data.success && !data.player_dead) {
+        showActionMsg(data.message || '无法行动');
+        return;
+    }
+    renderCombatLog(data);
+    showActionMsg(data.message || '');
+    await fetchState();
 }
 
 function renderCombatLog(data) {
@@ -361,6 +439,45 @@ async function attackEnemy() {
     // 玩家死亡 → 面板会被移除（后端已处理回酒馆）
     // 敌人死亡 → 面板会被移除（后端已处理结束战斗）
     // 刷新所有状态
+    await fetchState();
+}
+
+// PROTOTYPE-GAME：战斗防御 —— 待试玩验证后抽离，勿当通用API
+async function defendCombat() {
+    /** 本回合防御：不攻击，敌人伤害减半（可为 0）；战斗继续 */
+    const res = await fetch('/api/combat/defend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    });
+    const data = await res.json();
+    if (!data.success && !data.player_dead) {
+        showActionMsg(data.message || '无法防御');
+        return;
+    }
+    renderCombatLog(data);
+    showActionMsg(data.message || '');
+    await fetchState();
+}
+
+// PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API
+async function fleeCombat() {
+    /** 尝试脱离：成功 → 原地停战、双方残血（行动一段时间后恢复）；失败 → 被反击一回合，战斗继续 */
+    const res = await fetch('/api/combat/flee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    });
+    const data = await res.json();
+
+    // 非法拦截（无战斗/工程未启用）：只提示，不刷日志
+    if (!data.success && !data.player_dead) {
+        showActionMsg(data.message || '无法脱离');
+        return;
+    }
+    renderCombatLog(data);
+    showActionMsg(data.message || '');
+    // 成功 → 面板关闭但人虫都在原地；失败 → 面板保留、HP 刷新
     await fetchState();
 }
 

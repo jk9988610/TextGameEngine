@@ -250,9 +250,27 @@
                 </div>
                 <span class="hp-text" id="player-hp-text">HP: 50/50</span>
             </div>
-            <!-- 战斗按钮 -->
-            <div class="combat-actions">
+            <!-- PROTOTYPE-GAME：Beat 制战斗 —— 意图+AP 行（仅 beat 工程由 JS 显示） -->
+            <div id="beat-bar" style="display:none;">
+                <div id="beat-intent" class="log-system" style="margin:0.2rem 0;"></div>
+                <div id="beat-ap" style="font-size:0.8rem; color:#e8c66a; margin-bottom:0.3rem;"></div>
+            </div>
+            <!-- PROTOTYPE-GAME：Beat 制四动作（仅 beat 工程由 JS 显示） -->
+            <div class="combat-actions" id="beat-actions" style="display:none; flex-wrap:wrap;">
+                <button class="combat-btn" data-beat="attack">攻击 <small>(1AP)</small></button>
+                <button class="combat-btn flee" data-beat="block">格挡 <small>(0AP)</small></button>
+                <button class="combat-btn flee" data-beat="dodge">闪避 <small>(2AP)</small></button>
+                <!-- PROTOTYPE-GAME：玩家蓄力（第一刀：玩家侧重击） -->
+                <button class="combat-btn flee" data-beat="charge">蓄力 <small>(0AP)</small></button>
+                <button class="combat-btn flee" data-beat="disengage">脱离 <small>(2AP)</small></button>
+            </div>
+            <!-- 战斗按钮（旧回合制原型，beat 工程由 JS 隐藏） -->
+            <div class="combat-actions" id="classic-actions">
                 <button class="combat-btn" id="attack-btn">攻击！</button>
+                <!-- PROTOTYPE-GAME：战斗防御 —— 待试玩验证后抽离，勿当通用API（仅启用防御的工程由 JS 显示） -->
+                <button class="combat-btn flee" id="defend-btn" style="display:none;">防御</button>
+                <!-- PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API（仅启用脱离的工程由 JS 显示） -->
+                <button class="combat-btn flee" id="flee-btn" style="display:none;">脱离战斗</button>
                 <div class="combat-items" id="combat-items"></div>
             </div>
         </div>

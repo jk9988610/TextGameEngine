@@ -2,8 +2,8 @@
   "slime": {
     "id": "slime",
     "name": "森林史莱姆",
-    "hp": 10,
-    "attack": 3,
+    "hp": 26,
+    "attack": 6,
     "defense": 1,
     "description": "一只拳头大的绿色史莱姆，软乎乎地弹到路中央，却死死护着怀里的铜钥匙。",
     "reward_items": [
