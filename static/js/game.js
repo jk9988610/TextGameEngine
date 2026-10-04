@@ -352,11 +352,14 @@ function renderCombat(d) {
             + (beat.struggle ? '　【挣扎：本拍闪避/脱离 -1AP】' : '');
         const actionNames = { attack: '攻击', block: '格挡', dodge: '闪避', charge: '蓄力', disengage: '脱离' };
         beatActions.querySelectorAll('[data-beat]').forEach(btn => {
-            const cost = (beat.costs && beat.costs[btn.dataset.beat]) ?? 0;
+            const action = (beat.actions && beat.actions[btn.dataset.beat]) || {};
+            const cost = (beat.costs && beat.costs[btn.dataset.beat]) ?? action.cost ?? 0;
+            const label = action.label || actionNames[btn.dataset.beat] || btn.dataset.beat;
             btn.disabled = beat.ap < cost;
+            btn.title = action.description || '';
             const tag = btn.querySelector('small');
-            if (tag) tag.textContent = `(${cost}AP)`;
-            btn.firstChild.textContent = `${actionNames[btn.dataset.beat]} `;
+            if (tag) tag.textContent = `${action.tag ? `${action.tag} · ` : ''}(${cost}AP)`;
+            btn.firstChild.textContent = `${label} `;
         });
     } else {
         // PROTOTYPE-GAME：战斗脱离 —— 仅当前工程启用脱离时显示按钮

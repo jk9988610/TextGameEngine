@@ -130,6 +130,7 @@ def init_engagement(state: Dict, data: Dict) -> None:
     if battle:
         battle["_proto_beat"] = 1
         battle["_proto_charge"] = None          # 每次接战清空蓄力（含残血续战）
+        battle.pop("_proto_charge_expires", None)
         battle["_proto_enemy_step"] = 0         # 敌人节奏从撞击开始
         battle["_proto_enemy_promised"] = False
         battle["_proto_enemy_promised_bash"] = False
@@ -139,8 +140,126 @@ def init_engagement(state: Dict, data: Dict) -> None:
         battle.pop("_proto_struggle_beat", None)
 
 
+def _action_def(cfg: Dict, action: str) -> Dict[str, Any]:
+    """读取 demo 内动作词典；旧 cost_* 字段作为兼容兜底。"""
+    raw = (cfg.get("actions") or {}).get(action)
+    return raw if isinstance(raw, dict) else {}
+
+
 def _cost(cfg: Dict, action: str) -> int:
+    action_def = _action_def(cfg, action)
+    if "cost" in action_def:
+        return int(action_def["cost"])
     return int(cfg.get(f"cost_{action}", 0))
+
+
+def _action_payload(cfg: Dict) -> Dict[str, Dict[str, Any]]:
+    """给前端的动作定义；未配置的动作仍从旧字段生成最小定义。"""
+    return {
+        action: {
+            "label": _action_def(cfg, action).get("label", action),
+            "description": _action_def(cfg, action).get("description", ""),
+            "tag": _action_def(cfg, action).get("tag", ""),
+            "cost": _cost(cfg, action),
+        }
+        for action in ACTIONS
+    }
+
+
+def _configured_interactions(cfg: Dict, action: str, opponent_action: str):
+    """None 表示旧配置未声明交互，应走兼容逻辑；列表表示以配置为准。"""
+    interactions = _action_def(cfg, action).get("interactions")
+    if not isinstance(interactions, dict):
+        return None
+    return interactions.get(opponent_action, [])
+
+
+def _interaction_enabled(cfg: Dict, action: str, opponent_action: str,
+                         effect_type: str, context: Optional[Dict] = None) -> Optional[bool]:
+    """查动作交互声明；支持 charged/not_charged/hit 三种局部条件。"""
+    rules = _configured_interactions(cfg, action, opponent_action)
+    if rules is None:
+        return None
+    context = context or {}
+    for rule in rules:
+        if not isinstance(rule, dict) or rule.get("type") != effect_type:
+            continue
+        condition = rule.get("when")
+        if condition == "charged" and not context.get("charged"):
+            continue
+        if condition == "not_charged" and context.get("charged"):
+            continue
+        if condition == "hit" and not context.get("hit"):
+            continue
+        return True
+    return False
+
+
+def _weapon_damage(cfg: Dict, weapon: Dict, enemy: Dict, charged: bool) -> int:
+    """按攻击动作的 weapon_damage 声明结算；无声明时沿用原型公式。"""
+    effects = _action_def(cfg, "attack").get("effects")
+    effect = next((e for e in effects or []
+                   if isinstance(e, dict) and e.get("type") == "weapon_damage"), None)
+    if effect is None:
+        bonus = int(cfg.get("player_heavy_bonus", 2)) if charged else 0
+        multiplier = int(cfg.get("player_heavy_mult", 2)) if charged else 1
+        return max(1, int(weapon.get("damage", 5)) + bonus
+                   - int(enemy.get("defense", 0))) * multiplier
+
+    damage = int(weapon.get("damage", 5))
+    if charged and effect.get("charged_bonus_key"):
+        damage += int(cfg.get(effect["charged_bonus_key"], 0))
+    if effect.get("subtract_target_defense", True):
+        damage -= int(enemy.get("defense", 0))
+    damage = max(int(effect.get("minimum", 1)), damage)
+    if charged and effect.get("charged_multiplier_key"):
+        damage *= int(cfg.get(effect["charged_multiplier_key"], 1))
+    return damage
+
+
+def _effect_declared(cfg: Dict, action: str, effect_type: str) -> Optional[Dict]:
+    effects = _action_def(cfg, action).get("effects")
+    if not isinstance(effects, list):
+        return None
+    return next((e for e in effects
+                 if isinstance(e, dict) and e.get("type") == effect_type), {})
+
+
+def _charge_state_name(cfg: Dict) -> str:
+    effect = _effect_declared(cfg, "charge", "apply_state")
+    return str(effect.get("state", "readied")) if effect is not None else "readied"
+
+
+def _charge_apply_effect(cfg: Dict) -> Optional[Dict]:
+    return _effect_declared(cfg, "charge", "apply_state")
+
+
+def _charge_is_ready(cfg: Dict, battle: Dict, beat: int) -> bool:
+    """状态在到期拍结束前有效；旧存档没有到期拍时按旧 readied 兼容。"""
+    if battle.get("_proto_charge") != _charge_state_name(cfg):
+        return False
+    expires = battle.get("_proto_charge_expires")
+    return expires is None or int(beat) <= int(expires)
+
+
+def _charge_duration(cfg: Dict) -> int:
+    effect = _charge_apply_effect(cfg)
+    try:
+        return max(1, int((effect or {}).get("duration_beats", 1)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _attack_consumes_charge(cfg: Dict) -> bool:
+    return _action_def(cfg, "attack").get("consume_state") == _charge_state_name(cfg)
+
+
+def _avoids_damage(cfg: Dict, action: str, intent: str) -> bool:
+    """由动作效果声明该动作能否规避指定敌人动作；未配置沿用旧闪避行为。"""
+    effect = _effect_declared(cfg, action, "avoid_damage")
+    if effect is None:
+        return action == "dodge"
+    return intent in effect.get("against", [])
 
 
 def _effective_cost(cfg: Dict, battle: Dict, action: str, beat: int) -> int:
@@ -164,7 +283,7 @@ def decide(cfg: Dict, battle: Dict, state: Dict, enemy: Dict) -> str:
     # ③ 上拍闪避 → 承诺撞击（不可再躲）
     if battle.get("_proto_enemy_promised_bash"):
         return "bash"
-    player_charged = battle.get("_proto_charge") == "readied"
+    player_charged = _charge_is_ready(cfg, battle, int(battle.get("_proto_beat", 1)))
     max_hp = int(enemy.get("hp", 1))
     low_hp = int(battle.get("enemy_hp", max_hp)) <= max_hp * float(cfg.get("low_hp_ratio", 0.25))
     # ④ 玩家蓄力就绪 + 健康：躲开重击（残血不躲，否则杀不死）
@@ -205,13 +324,14 @@ def describe(state: Dict, data: Dict) -> Optional[Dict]:
         "ap": int(state.get("_proto_ap", cfg.get("ap_start", 1))),
         "ap_max": int(cfg.get("ap_max", 3)),
         "beat": beat,
-        "charged": battle.get("_proto_charge") == "readied",
+        "charged": _charge_is_ready(cfg, battle, beat),
         "enemy_flaw": flaw,
         "player_flaw": player_flaw,
         "struggle": struggle,
         "intent": intent,
         "intent_label": "敌人的动作",
         "intent_hint": hidden_hint,
+        "actions": _action_payload(cfg),
         "costs": {a: _effective_cost(cfg, battle, a, beat) for a in ACTIONS},
     }
 
@@ -258,26 +378,28 @@ def _kill_resolve(combat_system, state: Dict, data: Dict, battle: Dict,
 
 def _enemy_damage_taken(cfg: Dict, action: str, intent: str, state: Dict,
                         enemy: Dict) -> int:
-    """本拍玩家承受的伤害（由决策器锁定的 intent 决定）。
-    蓄力/喘息/蜷缩/闪避拍敌人不出手为 0；玩家闪避对一切攻击为 0；格挡对撞击与重击都
-    "先减防再减半"（重击 10→4）；攻击/蓄力/脱离均无防护，吃全额。"""
+    """按动作 effects/interactions 计算玩家本拍承伤；未配置时兼容旧公式。"""
     if intent in ("brace", "charge", "recover", "dodge"):
         return 0
     if intent == "heavy":
-        if action == "dodge":
+        if action == "dodge" and _avoids_damage(cfg, action, intent):
             return 0
-        # 格挡：先减防御力再减半（与撞击格挡同公式），def 仍生效；其余动作吃全额
         if action == "block":
-            pdef = int(state.get("player_defense", 0))
-            return max(1, int(cfg.get("heavy_damage", 10)) - pdef) // 2
-        return int(cfg.get("heavy_damage", 10))        # attack/charge/disengage
-    # bash
+            rule = _interaction_enabled(cfg, "block", "heavy",
+                                        "halve_damage_after_defense")
+            if rule is not False:
+                pdef = int(state.get("player_defense", 0))
+                return max(1, int(cfg.get("heavy_damage", 10)) - pdef) // 2
+        return int(cfg.get("heavy_damage", 10))
     raw = max(1, int(enemy.get("attack", 1)) - int(state.get("player_defense", 0)))
-    if action == "dodge":
+    if action == "dodge" and _avoids_damage(cfg, action, intent):
         return 0
     if action == "block":
-        return raw // 2
-    return raw                                       # attack/charge/disengage
+        rule = _interaction_enabled(cfg, "block", "bash",
+                                    "halve_damage_after_defense")
+        if rule is not False:
+            return raw // 2
+    return raw
 
 
 def _heavy_preview(cfg: Dict, state: Dict, data: Dict, enemy: Dict) -> int:
@@ -318,7 +440,8 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
 
     beat = int(battle.get("_proto_beat", 1))
     # 拍首锁定：本拍敌人动作由决策器一次性决定，拍内状态变化不再改招
-    player_charged_at_lock = battle.get("_proto_charge") == "readied"
+    player_charged_at_lock = (_charge_is_ready(cfg, battle, beat)
+                              and _attack_consumes_charge(cfg))
     intent = decide(cfg, battle, state, enemy)
     ap = int(state.get("_proto_ap", 0))
     cost = _effective_cost(cfg, battle, action, beat)
@@ -330,11 +453,13 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
     state["_proto_ap"] = ap - cost
     enemy_name = enemy.get("name", enemy["id"])
 
-    # 蓄力就绪只保留下一拍：只有本拍出「攻击」能兑现；其余动作（含再次蓄力）
-    # 都让旧蓄力过期清空，不能叠加、不能囤
-    readied = battle.get("_proto_charge") == "readied"
-    if action != "charge":
+    # 状态生命周期由 charge.apply_state / attack.consume_state 声明；未声明时兼容旧字段。
+    charge_state = _charge_state_name(cfg)
+    readied = (_charge_is_ready(cfg, battle, beat)
+               and (action != "attack" or _attack_consumes_charge(cfg)))
+    if action != "charge" and action == "attack" and _attack_consumes_charge(cfg):
         battle["_proto_charge"] = None
+        battle.pop("_proto_charge_expires", None)
 
     # 承诺/打断标记在本拍锁定后即视为消费（下一拍状态由拍末推进重新设定）
     battle["_proto_enemy_promised"] = False
@@ -342,6 +467,8 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
 
     # ---------- 玩家进攻（先结算数值，伤害与敌人同时生效，不因击杀提前结束）----------
     p_damage = 0
+    damage_logged = False
+    charge_interrupted = False
     if action == "attack":
         weapon = (data.get("items") or {}).get(weapon_id, {})
         if weapon_id not in state.get("player_inventory", []):
@@ -355,21 +482,29 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
         # 闪避躲过一切攻击（含重击）；普攻打不动蜷缩；重击克制蜷缩。
         # 蓄力/喘息拍不防御，正常吃伤害
         if intent == "dodge":
-            if readied:
-                response["log"].append(
-                    f"你全力砸出的重击被【{enemy_name}】侧身躲开，一击落空！"
-                    "用力过猛让你下一拍露出破绽。")
-                battle["_proto_player_flaw_beat"] = beat + 1
+            miss = _interaction_enabled(cfg, "attack", "dodge", "miss",
+                                        {"charged": readied})
+            if miss is not False:
+                if readied:
+                    response["log"].append(
+                        f"你全力砸出的重击被【{enemy_name}】侧身躲开，一击落空！"
+                        "用力过猛让你下一拍露出破绽。")
+                    battle["_proto_player_flaw_beat"] = beat + 1
+                else:
+                    response["log"].append(
+                        f"【{enemy_name}】身形一晃，你的攻击落了空！")
             else:
-                response["log"].append(
-                    f"【{enemy_name}】身形一晃，你的攻击落了空！")
+                p_damage = _weapon_damage(cfg, weapon, enemy, readied)
         elif intent == "brace" and not readied:
-            response["log"].append(
-                f"【{enemy_name}】蜷成一团，你的攻击被弹开，没有造成伤害！")
+            miss = _interaction_enabled(cfg, "attack", "brace", "miss",
+                                        {"charged": readied})
+            if miss is not False:
+                response["log"].append(
+                    f"【{enemy_name}】蜷成一团，你的攻击被弹开，没有造成伤害！")
+            else:
+                p_damage = _weapon_damage(cfg, weapon, enemy, readied)
         else:
-            bonus = int(cfg.get("player_heavy_bonus", 2)) if readied else 0
-            mult = int(cfg.get("player_heavy_mult", 2)) if readied else 1
-            p_damage = max(1, int(weapon.get("damage", 5)) + bonus - int(enemy["defense"])) * mult
+            p_damage = _weapon_damage(cfg, weapon, enemy, readied)
             if readied:
                 response["log"].append(
                     f"你踏前一步全力出手，蓄力化为重击，对【{enemy_name}】造成 **{p_damage}** 点伤害！")
@@ -378,8 +513,21 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
                     f"你用【{weapon['name']}】对【{enemy_name}】造成 **{p_damage}** 点伤害！")
             combat_system._bus.publish("COMBAT_DAMAGE",
                                        attacker="player", defender=enemy["id"], damage=p_damage)
-            # 打到蓄力拍 = 打断下一拍重击（打断状态由拍末按 p_damage 统一写入）
+            damage_logged = True
             if intent == "charge":
+                charge_interrupted = _interaction_enabled(
+                    cfg, "attack", "charge", "interrupt", {"charged": readied, "hit": True}) is not False
+                if charge_interrupted:
+                    response["log"].append("这一击正中蓄力中的【%s】，它的重击被打断了！" % enemy_name)
+    if action == "attack" and p_damage > 0 and not damage_logged:
+        response["log"].append(
+            f"你用【{weapon['name']}】对【{enemy_name}】造成 **{p_damage}** 点伤害！")
+        combat_system._bus.publish("COMBAT_DAMAGE",
+                                   attacker="player", defender=enemy["id"], damage=p_damage)
+        if intent == "charge":
+            charge_interrupted = _interaction_enabled(
+                cfg, "attack", "charge", "interrupt", {"charged": readied, "hit": True}) is not False
+            if charge_interrupted:
                 response["log"].append("这一击正中蓄力中的【%s】，它的重击被打断了！" % enemy_name)
     elif action == "charge":
         response["log"].append("你沉身拧腰、暗暗蓄力，等待致命的一拍……")
@@ -482,21 +630,26 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
             "你被攻击缠住，没能脱离。挣扎之间你调整了脚步——下一拍闪避或脱离少花 1 点行动力。")
         response["message"] = "脱离失败！敌人的攻击缠住了你。"
     elif action == "charge":
+        charge_effect = _charge_apply_effect(cfg)
         if taken == 0:
-            battle["_proto_charge"] = "readied"
+            battle["_proto_charge"] = (charge_effect or {}).get("state", "readied")
+            battle["_proto_charge_expires"] = beat + _charge_duration(cfg)
             preview = _heavy_preview(cfg, state, data, enemy)
             response["log"].append(
                 f"蓄力完成！下一拍选择攻击，将打出 **{preview}** 点重击。")
             response["message"] = "蓄力就绪"
         else:
-            battle["_proto_charge"] = None
+            clear_on_damage = (charge_effect or {}).get("clear_state_on_damage", True)
+            if clear_on_damage:
+                battle["_proto_charge"] = None
+                battle.pop("_proto_charge_expires", None)
             response["log"].append("蓄力被打断了，下一拍的攻击没有加成。")
             response["message"] = "蓄力被打断"
 
     # ---------- 拍末：敌人节奏推进（决策状态机的唯一写入点）----------
     battle["_proto_enemy_interrupted"] = False
     if intent == "charge":
-        if p_damage > 0:
+        if p_damage > 0 and charge_interrupted:
             # 蓄力拍被攻击命中 → 下拍喘息，节奏从头再来
             battle["_proto_enemy_interrupted"] = True
             battle["_proto_enemy_step"] = 0
@@ -520,6 +673,11 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
         battle.pop("_proto_enemy_flaw_beat", None)
     if battle.get("_proto_player_flaw_beat") not in (None, next_beat):
         battle.pop("_proto_player_flaw_beat", None)
+    if (battle.get("_proto_charge") is not None
+            and battle.get("_proto_charge_expires") is not None
+            and next_beat > int(battle["_proto_charge_expires"])):
+        battle["_proto_charge"] = None
+        battle.pop("_proto_charge_expires", None)
     if battle.get("_proto_struggle_beat") not in (None, next_beat):
         battle.pop("_proto_struggle_beat", None)
     battle["_proto_beat"] = next_beat
@@ -532,7 +690,7 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
     response["player"] = _player_stats(state)
     response["ap"] = state["_proto_ap"]
     response["beat"] = battle["_proto_beat"]
-    response["charged"] = battle.get("_proto_charge") == "readied"
+    response["charged"] = _charge_is_ready(cfg, battle, battle["_proto_beat"])
     response["enemy_flaw"] = battle.get("_proto_enemy_flaw_beat") == battle["_proto_beat"]
     response["player_flaw"] = battle.get("_proto_player_flaw_beat") == battle["_proto_beat"]
     response["struggle"] = battle.get("_proto_struggle_beat") == battle["_proto_beat"]

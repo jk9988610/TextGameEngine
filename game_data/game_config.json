@@ -39,6 +39,69 @@
     "cost_dodge": 2,
     "cost_charge": 0,
     "cost_disengage": 2,
+    "actions": {
+      "attack": {
+        "label": "攻击",
+        "description": "用装备造成普通武器伤害。",
+        "cost": 1,
+        "tag": "直接伤害",
+        "consume_state": "readied",
+        "effects": [
+          {
+            "type": "weapon_damage",
+            "subtract_target_defense": true,
+            "minimum": 1,
+            "charged_bonus_key": "player_heavy_bonus",
+            "charged_multiplier_key": "player_heavy_mult"
+          }
+        ],
+        "interactions": {
+          "dodge": [
+            {"type": "miss"},
+            {"type": "expose_player", "when": "charged"}
+          ],
+          "brace": [
+            {"type": "miss", "when": "not_charged"}
+          ],
+          "charge": [
+            {"type": "interrupt", "when": "hit"}
+          ]
+        }
+      },
+      "charge": {
+        "label": "蓄力",
+        "description": "在安全的一拍蓄力，下一拍攻击转为重击。",
+        "cost": 0,
+        "tag": "准备",
+        "effects": [
+          {"type": "apply_state", "state": "readied", "duration_beats": 1,
+           "clear_state_on_damage": true}
+        ]
+      },
+      "block": {
+        "label": "格挡",
+        "description": "放弃进攻，降低本拍受到的撞击伤害。",
+        "cost": 0,
+        "tag": "防御",
+        "interactions": {
+          "bash": [
+            {"type": "halve_damage_after_defense"}
+          ],
+          "heavy": [
+            {"type": "halve_damage_after_defense"}
+          ]
+        }
+      },
+      "dodge": {
+        "label": "闪避",
+        "description": "消耗行动力，避开本拍攻击。",
+        "cost": 2,
+        "tag": "位移",
+        "effects": [
+          {"type": "avoid_damage", "against": ["bash", "heavy"]}
+        ]
+      }
+    },
     "heavy_damage": 10,
     "low_hp_ratio": 0.25,
     "player_heavy_bonus": 2,

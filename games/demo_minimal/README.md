@@ -67,6 +67,17 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
   胜利后弹出**战斗结算弹窗**：金币自动入账，掉落物点击拾取并弹出物品简介
   （描述取自 items.json 的 description）；不拾取可关闭，物品留在地上。
   下一阶段候选：假动作；当前模糊征兆仍是《森林试炼》的阶段一原型，待试玩验证。
+
+  **动作设计词典（阶段一小切片）**：`_proto_beatcombat.actions` 可定义动作的 `label`、
+  `description`、`cost`、`tag`。当前只接入攻击/格挡/闪避的按钮名称、说明和 AP 费用。
+  这三个动作还可声明 `effects` 与 `interactions`：已验证 `weapon_damage`、`avoid_damage`、
+  `miss`、`halve_damage_after_defense`、`interrupt` 和蓄力/非蓄力条件，配置会实际参与
+  伤害、格挡、闪避和打断结算。未声明时保留原型旧行为。
+  本轮还验证了状态生命周期：`charge.effects` 的 `apply_state` 添加 `readied`，
+  `duration_beats` 控制状态到期拍，`attack` 的 `consume_state` 消费它，
+  `clear_state_on_damage` 在蓄力受伤时清除。当前 demo 保持 1 拍；冒烟另用 2 拍配置验证
+  状态确实能多保留一拍。蓄力和重击仍使用 demo 原型字段兼容存档；这仍不是引擎通用动作 API，
+  敌人决策器尚未配置化。
 - 早期战斗原型（脱离 proto_retreat / 防御 proto_defend / 先后手 proto_turnorder）
   代码保留但与 beat 开关互斥，beat 启用时其接口 409、冒烟自动 SKIP，待抽离批次统一处理。
 - 原型机制详见 `games/demo_minimal/proto_*.py`，均待试玩后抽离引擎。

@@ -18,6 +18,12 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from qa.tge_api import GameClient, QaRunner, cleanup_qa_saves  # noqa: E402
+from games.demo_minimal.proto_beatcombat import (  # noqa: E402
+    _action_payload, _cost, _weapon_damage, _enemy_damage_taken,
+    _interaction_enabled, _charge_state_name, _attack_consumes_charge,
+    _charge_apply_effect, _charge_duration, _charge_is_ready,
+    init_engagement, resolve, describe,
+)
 
 BASE = os.environ.get("TGE_BASE", "http://127.0.0.1:5000")
 r = QaRunner("Beat 制战斗原型冒烟（L2 决策器）")
@@ -54,6 +60,134 @@ r.check("b1-bash", (face(c)["beat"], face(c)["intent"]) == (1, "bash"))
 r.check("b1-ambiguous-telegraph",
         face(c)["intent_label"] == "敌人的动作"
         and "弹簧" in face(c)["intent_hint"], face(c))
+r.check("action-dictionary",
+        face(c)["actions"]["attack"]["label"] == "攻击"
+        and face(c)["actions"]["attack"]["tag"] == "直接伤害"
+        and face(c)["actions"]["dodge"]["description"], face(c))
+custom_action_cfg = {
+    "cost_attack": 1,
+    "actions": {"attack": {"label": "挥砍", "description": "测试配置", "cost": 7, "tag": "近战"}},
+}
+r.check("action-config-overrides-legacy-cost",
+        _cost(custom_action_cfg, "attack") == 7
+        and _action_payload(custom_action_cfg)["attack"]["label"] == "挥砍"
+        and _action_payload(custom_action_cfg)["attack"]["tag"] == "近战",
+        _action_payload(custom_action_cfg))
+interaction_cfg = {
+    "player_heavy_bonus": 2,
+    "player_heavy_mult": 2,
+    "heavy_damage": 10,
+    "actions": {
+        "attack": {
+            "effects": [{"type": "weapon_damage", "subtract_target_defense": True,
+                         "minimum": 1, "charged_bonus_key": "player_heavy_bonus",
+                         "charged_multiplier_key": "player_heavy_mult"}],
+            "interactions": {"dodge": [{"type": "miss"}]},
+        },
+        "block": {"interactions": {"bash": [{"type": "halve_damage_after_defense"}]}},
+        "dodge": {"effects": [{"type": "avoid_damage", "against": ["bash"]}]},
+    },
+}
+r.check("effects-drive-resolution",
+        _weapon_damage(interaction_cfg, {"damage": 10}, {"defense": 1}, False) == 9
+        and _interaction_enabled(interaction_cfg, "attack", "dodge", "miss") is True
+        and _enemy_damage_taken(interaction_cfg, "block", "bash",
+                                {"player_defense": 2}, {"attack": 6}) == 2
+        and _enemy_damage_taken(interaction_cfg, "dodge", "bash",
+                                {"player_defense": 2}, {"attack": 6}) == 0,
+        interaction_cfg)
+lifecycle_cfg = {
+    "actions": {
+        "attack": {"consume_state": "focused"},
+        "charge": {"effects": [{"type": "apply_state", "state": "focused",
+                                  "duration_beats": 1, "clear_state_on_damage": True}]},
+    }
+}
+r.check("charge-state-lifecycle-config",
+        _charge_state_name(lifecycle_cfg) == "focused"
+        and _attack_consumes_charge(lifecycle_cfg)
+        and _charge_apply_effect(lifecycle_cfg)["duration_beats"] == 1
+        and _charge_apply_effect(lifecycle_cfg)["clear_state_on_damage"] is True
+        and _charge_duration(lifecycle_cfg) == 1,
+        lifecycle_cfg)
+long_lifecycle_cfg = {
+    "actions": {
+        "attack": {"consume_state": "focused"},
+        "charge": {"effects": [{"type": "apply_state", "state": "focused",
+                                  "duration_beats": 2, "clear_state_on_damage": True}]},
+    }
+}
+long_battle = {"_proto_charge": "focused", "_proto_charge_expires": 4}
+r.check("duration-config-is-live",
+        _charge_duration(long_lifecycle_cfg) == 2
+        and _charge_is_ready(long_lifecycle_cfg, long_battle, 3)
+        and _charge_is_ready(long_lifecycle_cfg, long_battle, 4)
+        and not _charge_is_ready(long_lifecycle_cfg, long_battle, 5),
+        long_lifecycle_cfg)
+
+class _ProbeBus:
+    def publish(self, *_args, **_kwargs):
+        pass
+
+
+class _ProbeCombat:
+    def __init__(self):
+        self._bus = _ProbeBus()
+
+    def end_battle(self):
+        pass
+
+    def _handle_player_death(self, response):
+        response["player_dead"] = True
+
+
+long_cfg = {
+    "enabled": True, "ap_start": 1, "ap_per_beat": 1, "ap_max": 3,
+    "cost_attack": 1, "cost_block": 0, "cost_charge": 0, "cost_disengage": 2,
+    "cost_dodge": 2, "heavy_damage": 10, "low_hp_ratio": 0.25,
+    "player_heavy_bonus": 2, "player_heavy_mult": 2,
+    "actions": {
+        "attack": {"consume_state": "focused"},
+        "charge": {"effects": [{"type": "apply_state", "state": "focused",
+                                  "duration_beats": 2, "clear_state_on_damage": True}]},
+        "block": {"interactions": {"bash": [{"type": "halve_damage_after_defense"}],
+                                     "heavy": [{"type": "halve_damage_after_defense"}]}},
+        "dodge": {"effects": [{"type": "avoid_damage", "against": ["bash", "heavy"]}]},
+    },
+}
+long_data = {
+    "config": {"_proto_beatcombat": long_cfg},
+    "items": {"iron_sword": {"id": "iron_sword", "name": "铁剑", "is_weapon": True,
+                               "damage": 10}},
+    "enemies": {"slime": {"id": "slime", "name": "史莱姆", "hp": 26,
+                            "attack": 6, "defense": 1, "reward_items": [], "reward_gold": 0}},
+    "scenes": {"forest": {"enemies_here": ["slime"]}},
+}
+long_state = {
+    "current_scene": "forest", "player_hp": 50, "player_max_hp": 50,
+    "player_attack": 5, "player_defense": 2, "player_inventory": ["iron_sword"],
+    "current_battle": {"enemy_id": "slime", "enemy_hp": 26},
+    "killed_enemies": [], "game_time": 0,
+}
+long_combat = _ProbeCombat()
+init_engagement(long_state, long_data)
+resolve(long_combat, long_state, long_data, "block")   # b1 bash → b2
+resolve(long_combat, long_state, long_data, "charge")  # b2 charge → focused until b4
+resolve(long_combat, long_state, long_data, "block")   # b3 heavy → b4, still focused
+b4_face = describe(long_state, long_data)
+r.check("duration-real-resolve-retains-state",
+        long_state["current_battle"].get("_proto_charge") == "focused"
+        and long_state["current_battle"].get("_proto_charge_expires") == 4
+        and b4_face["charged"] is True
+        and b4_face["intent"] == "dodge",
+        b4_face)
+resolve(long_combat, long_state, long_data, "block")   # b4 dodge → b5, expires
+b5_face = describe(long_state, long_data)
+r.check("duration-real-resolve-expires-state",
+        long_state["current_battle"].get("_proto_charge") is None
+        and not b5_face["charged"]
+        and b5_face["intent"] == "bash",
+        b5_face)
 beat(c, "block")                        # 48
 r.check("b2-charge", face(c)["intent"] == "charge", face(c))
 beat(c, "block")                        # 蓄力拍无伤 48
