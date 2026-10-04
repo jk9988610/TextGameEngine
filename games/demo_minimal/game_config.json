@@ -18,6 +18,11 @@
     "combat_turn": 60,
     "buy_item": 20
   },
+  "_proto_retreat": {
+    "enabled": true,
+    "success_rate": 0.7,
+    "flee_to": "village"
+  },
   "event_rules": [
     {
       "id": "slime_drops_key_unlocks_cave",

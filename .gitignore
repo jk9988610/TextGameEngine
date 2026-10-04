@@ -46,3 +46,6 @@ tmp/
 *.swo
 .DS_Store
 Thumbs.db
+
+# ===== 游戏工程切换备份（tools/load_game.ps1 产物）=====
+game_data.bak/
