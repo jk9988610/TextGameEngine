@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>游戏内容编辑器</title>
-    <link rel="stylesheet" href="editor.css">
     <link rel="stylesheet" href="lib/drawflow.min.css">
+    <link rel="stylesheet" href="editor.css">
 </head>
 <body>
     <header class="ed-topbar">
@@ -17,6 +17,7 @@
         <div class="ed-top-actions">
             <a class="ed-btn" href="index.html">返回游戏</a>
             <button class="ed-btn" id="btn-config" type="button">游戏设置</button>
+            <button class="ed-btn" id="btn-editor-settings" type="button">编辑器设置</button>
             <button class="ed-btn primary" id="btn-playtest" type="button">在新标签页试玩</button>
         </div>
     </header>
@@ -351,6 +352,55 @@
                     <option value="14">精细 14</option>
                 </select>
             </span>
+        </div>
+    </div>
+
+    <!-- 编辑器设置（本机偏好，立即生效） -->
+    <div id="es-overlay" class="ed-modal-overlay hidden">
+        <div class="ed-modal" role="dialog" aria-label="编辑器设置">
+            <h3>编辑器设置</h3>
+            <div class="ed-field">
+                <span>拖动画布：鼠标右键（按住拖动任意位置都只平移画布，不会选中或移动卡片）</span>
+            </div>
+            <div class="ed-field">
+                <span>收起/展开属性栏的按键（点一下即收起/展开，可与拖动画布共用右键）</span>
+                <div class="es-radios">
+                    <label><input type="radio" name="es-collapse" value="middle"> 鼠标中键</label>
+                    <label><input type="radio" name="es-collapse" value="right"> 鼠标右键（单击）</label>
+                </div>
+            </div>
+            <label class="ed-check">
+                <input type="checkbox" id="es-autosave">
+                <span>自动保存画布改动（停顿约 1.5 秒后自动保存当前 NPC；关闭则手动点「保存」）</span>
+            </label>
+            <p class="ed-tip">这些设置只保存在你当前浏览器里，修改立即生效，与游戏数据无关。</p>
+            <div class="ed-form-actions">
+                <button type="button" class="ed-btn primary" id="es-close">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NPC 信息编辑弹窗（属性栏「NPC 设置」打开，不离开画布） -->
+    <div id="npc-edit-overlay" class="ed-modal-overlay hidden">
+        <div class="ed-modal" role="dialog" aria-label="NPC 信息">
+            <h3 id="npc-edit-title">NPC 信息</h3>
+            <label class="ed-field">
+                <span>NPC ID（保存后不可改）</span>
+                <input type="text" id="npc-edit-id" readonly>
+            </label>
+            <label class="ed-field">
+                <span>名称</span>
+                <input type="text" id="npc-edit-name" maxlength="40">
+            </label>
+            <label class="ed-field">
+                <span>所在地点</span>
+                <select id="npc-edit-scene"></select>
+            </label>
+            <p class="ed-tip">对话节点、入口与问候规则仍在属性栏/画布中编辑。</p>
+            <div class="ed-form-actions">
+                <button type="button" class="ed-btn primary" id="npc-edit-save">保存</button>
+                <button type="button" class="ed-btn" id="npc-edit-cancel">取消</button>
+            </div>
         </div>
     </div>
 

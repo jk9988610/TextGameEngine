@@ -362,9 +362,9 @@ body.workbench-canvas .ed-main { display: none; }
     touch-action: none;
 }
 
-/* 右侧属性抽屉（贴工具条与底栏；Ctrl+B/☰ 滑出收纳） */
+/* 右侧属性抽屉：上贴画布工具条(42)、下贴底栏；Ctrl+B/☰ 滑出收纳 */
 #nc-inspector {
-    position: absolute; top: 0; right: 0; bottom: 34px; width: 340px; z-index: 15;
+    position: absolute; top: 42px; right: 0; bottom: 34px; width: 340px; z-index: 15;
     background: rgba(26,27,31,.97); border-left: 1px solid #2f3239;
     display: flex; flex-direction: column; overflow: hidden;
     transition: transform 0.16s ease;
@@ -378,8 +378,6 @@ body.workbench-canvas .ed-main { display: none; }
 .nci-head .cw-tb { margin-left: auto; }
 .nci-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .nci-empty { color: var(--text-dim); font-size: 0.8rem; padding: 1.6rem 0.4rem; text-align: center; }
-.nci-node-id { font-size: 0.72rem; color: var(--text-dim); }
-.nci-node-id b { color: var(--accent); }
 .nci-sec { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px;
     display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .nci-body .npc-choice { margin: 0; padding: 8px; border: 1px solid var(--border);
@@ -400,6 +398,43 @@ body.workbench-canvas .ed-main { display: none; }
 .cw-opt { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
 .cw-opt select { background: #26272b; color: var(--text); border: 1px solid #3a3d45; border-radius: 5px;
     padding: 2px 5px; font-size: 0.74rem; font-family: inherit; }
+
+/* 顶栏/底栏/属性栏整体禁止误选中，只允许在输入控件里选择文本 */
+#cw-bar, #cw-status, #nc-inspector { user-select: none; -webkit-user-select: none; }
+#nc-inspector input, #nc-inspector textarea, #nc-inspector select,
+#cw-bar input, #cw-bar select, #cw-status select { user-select: text; -webkit-user-select: text; }
+
+/* 属性栏所有输入控件统一深色（输入框/下拉/台词区），与引用型下拉一致 */
+.nci-body input[type="text"],
+.nci-body input[type="number"],
+.nci-body input:not([type]),
+.nci-body textarea,
+.nci-body select {
+    background: rgba(12,13,15,.7);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+.nci-body input:focus, .nci-body textarea:focus, .nci-body select:focus { border-color: var(--accent); }
+.nci-body textarea {
+    min-height: 74px;          /* 台词区：够大、可拉伸 */
+    resize: vertical;
+    line-height: 1.55;
+}
+.nci-body .npc-choice input, .nci-body .npc-choice select { width: auto; }  /* 选项行内控件不强制 100% */
+
+/* 引用型参数下拉（物品/敌人/场景/节点）与上面统一，此选择器仅保底 */
+.nr-cond-param, .nc-cond-param, .ne-param, .ew-cond-param {
+    background: rgba(12,13,15,.7); border: 1px solid var(--border); color: var(--text);
+    border-radius: 5px; padding: 3px 6px; font-size: 0.76rem; font-family: inherit;
+}
+.nci-body select.nc-cond-param, .nci-body select.ne-param { max-width: 100%; }
 .nc-canvas.grabbing, .nc-canvas.grabbing * { cursor: grabbing !important; }
 
 /* Drawflow 节点卡片（与编辑器暗色体系一致，统一宽 280） */
@@ -435,22 +470,60 @@ body.workbench-canvas .ed-main { display: none; }
 .nc-choice .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nc-choice .n { font-size: 10.5px; color: var(--accent); }
 
-.nc-canvas .drawflow-node .input,
-.nc-canvas .drawflow-node .output {
+/* 端口：容器启动后同时带 .nc-canvas.parent-drawflow，选择器提到 4 类，
+   压过 drawflow.min.css 的默认端口样式（库默认 input 黄点/output 白点） */
+.nc-canvas.parent-drawflow .drawflow-node .input,
+.nc-canvas.parent-drawflow .drawflow-node .output {
     position: absolute; width: 13px; height: 13px; margin: 0;
     background: #1a1b1f; border: 2px solid var(--accent); border-radius: 50%;
     cursor: crosshair; z-index: 3;
 }
-.nc-canvas .drawflow-node .input { left: -6.5px; top: 50%; transform: translateY(-50%); }
-.nc-canvas .drawflow-node .output { right: -6.5px; transform: translateY(-50%); top: var(--y, 50%); }
-.nc-canvas .drawflow-node .output_1 { top: var(--y1, 50%); }
-.nc-canvas .drawflow-node .output_2 { top: var(--y2, 50%); }
-.nc-canvas .drawflow-node .output_3 { top: var(--y3, 50%); }
-.nc-canvas .drawflow-node .output_4 { top: var(--y4, 50%); }
-.nc-canvas .drawflow-node .output_5 { top: var(--y5, 50%); }
-.nc-canvas .drawflow-node .output_6 { top: var(--y6, 50%); }
-.nc-canvas .drawflow-node .output_7 { top: var(--y7, 50%); }
-.nc-canvas .drawflow-node .output_8 { top: var(--y8, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .input { left: -6.5px; top: 50%; transform: translateY(-50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output { right: -6.5px; transform: translateY(-50%); top: var(--y, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_1 { top: var(--y1, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_2 { top: var(--y2, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_3 { top: var(--y3, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_4 { top: var(--y4, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_5 { top: var(--y5, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_6 { top: var(--y6, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_7 { top: var(--y7, 50%); }
+.nc-canvas.parent-drawflow .drawflow-node .output_8 { top: var(--y8, 50%); }
+
+/* 平移键按住拖动时全画布抓取光标 */
+.nc-canvas.panning, .nc-canvas.panning * { cursor: grabbing !important; }
+.nc-canvas .drawflow-node, .nc-canvas .drawflow-node * { user-select: none; }
+
+/* 开始对话卡片（合成入口，仅输出侧有端口；与 LEAVE 的仅输入口对称） */
+.nc-canvas .drawflow-node.nc-start {
+    border-color: #2ecc9b; box-shadow: 0 6px 22px rgba(0,0,0,.3), 0 0 0 3px rgba(46,204,155,.15);
+}
+.nc-node-head.start-head { color: #2ecc9b; font-weight: 700; }
+.nc-entry-row {
+    display: flex; align-items: center; gap: 7px;
+    padding: 7px 11px; font-size: 12px;
+    border-top: 1px solid rgba(255,255,255,.04);
+}
+.nc-entry-row::before { content: "▶"; color: #2ecc9b; font-size: 10px; flex: none; }
+.nc-entry-row .t { font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nc-entry-row .c { margin-left: auto; font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+
+/* 入口连线：默认入口实线绿、条件问候虚线橙黄 */
+.nc-canvas .connection.entry-default .main-path { stroke: #4ec9b0; }
+.nc-canvas .connection.entry-cond .main-path { stroke: #d4a72c; stroke-dasharray: 7 5; }
+
+/* 入口设置面板 */
+.nci-rule-row {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: rgba(0,0,0,.16); font-size: 0.76rem; color: var(--text-dim);
+}
+.nci-rule-row select, .nci-rule-row input {
+    background: rgba(12,13,15,.7); border: 1px solid var(--border); color: var(--text);
+    border-radius: 5px; padding: 3px 6px; font-size: 0.76rem; font-family: inherit;
+}
+.nci-rule-row .nr-target { flex: 1 1 110px; min-width: 90px; }
+.nci-rule-row .nr-param { flex: 0 1 80px; }
+.nci-add-rule { margin-top: 4px; }
 
 .nc-canvas .connection .main-path { stroke: #6b7280; stroke-width: 2px; }
 .nc-canvas .connection .main-path:hover { stroke: var(--accent); }
@@ -468,6 +541,36 @@ body.workbench-canvas .ed-main { display: none; }
 .nc-canvas .drawflow-node.multi-sel {
     border-color: #7dd3fc; box-shadow: 0 0 0 3px rgba(125,211,252,.25);
 }
+
+/* 编辑器设置弹窗 */
+.ed-modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center;
+}
+.ed-modal {
+    width: 460px; max-width: calc(100vw - 40px);
+    background: var(--bg-panel);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.2rem 1.4rem;
+    box-shadow: 0 18px 60px rgba(0,0,0,.5);
+    display: flex; flex-direction: column; gap: 0.9rem;
+}
+.ed-modal h3 { font-size: 0.95rem; }
+.es-radios { display: flex; gap: 1.2rem; margin-top: 0.35rem; }
+.es-radios label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.84rem; }
+
+/* 抽屉内节点 ID 改名 */
+.nci-id-row { display: flex; align-items: center; gap: 8px; }
+.nci-id-row input {
+    flex: 1; background: rgba(12,13,15,.7); border: 1px solid var(--border);
+    color: var(--text); padding: 4px 8px; border-radius: 5px;
+    font-family: Consolas, monospace; font-size: 0.78rem; outline: none;
+}
+.nci-id-row input:focus { border-color: var(--accent); }
+.nci-id-row input.invalid { border-color: var(--danger); }
+.nci-id-err { color: var(--danger); font-size: 0.72rem; }
 
 /* 「在列表编辑」跳转后卡片短暂高亮 */
 .npc-card.flash-card { animation: nc-flash 1.4s ease; border-color: var(--accent); }

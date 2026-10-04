@@ -10,11 +10,17 @@
         "if": {
           "enemy_killed": "cave_goblin"
         }
+      },
+      {
+        "node": "drink_no",
+        "if": {
+          "flag": "ddd"
+        }
       }
     ],
     "nodes": {
       "ask_key": {
-        "text": "（*巴尼突然清醒了一些，压低声音*）生锈的钥匙？哦...有人早上把它丢在外面那棵老橡树下了。那地方...好像通向什么神秘的洞穴。（*他又醉过去了*）",
+        "text": "QA_VERIFY_LINE",
         "choices": [
           {
             "text": "谢谢提示！",
@@ -53,7 +59,7 @@
           },
           {
             "text": "不用了，我只是路过。",
-            "next": "drink_no"
+            "next": "ask_key"
           },
           {
             "text": "你有没有看到一把生锈的钥匙？",
@@ -123,7 +129,7 @@
         "choices": [
           {
             "text": "只是碰巧而已。",
-            "next": "after_kill_humble"
+            "next": "after_kill_hard"
           },
           {
             "text": "它确实还挺难对付的。",
@@ -151,7 +157,7 @@
         "choices": [
           {
             "text": "谢谢你的祝福。",
-            "next": "leave"
+            "next": "blessing_done"
           }
         ]
       },
@@ -172,7 +178,7 @@
             "next": "secret"
           },
           {
-            "text": "这把钥匙...你知道是开什么的吗？（需要生锈的钥匙）",
+            "text": "这把钥匙...你知道是开什么的吗？",
             "next": "has_key",
             "if": {
               "has_item": "rusty_key"
@@ -180,7 +186,7 @@
           },
           {
             "text": "（默默离开）",
-            "next": "leave"
+            "next": "after_kill_humble"
           }
         ]
       },
@@ -189,7 +195,10 @@
         "choices": [
           {
             "text": "好的，我去看看！",
-            "next": "leave"
+            "next": "secret",
+            "if": {
+              "enemy_killed": "forest_wolf"
+            }
           }
         ]
       },

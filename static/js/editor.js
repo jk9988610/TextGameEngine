@@ -589,6 +589,8 @@ const EFFECT_PARAM_CFG = {
     teleport: { list: 'npc-dl-scenes', type: 'text', ph: '地点 ID' },
     start_combat: { list: 'npc-dl-enemies', type: 'text', ph: '敌人 ID' },
 };
+// 条件选项/参数配置共享给画布工作台的「入口设置」面板
+window.EditorShared = { COND_OPTIONS, COND_PARAM_CFG };
 
 function ce(tag, cls, text) {
     const x = document.createElement(tag);
@@ -608,13 +610,45 @@ function condTypeOf(cond) {
     return ['flag', 'has_item', 'enemy_killed', 'gold_gte'].find(k => k in cond) || '';
 }
 
+function escAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** 引用型参数下拉的全部候选（来自已填充的 datalist 的 option） */
+function refOptionsHtmlFromDl(dlId, selected) {
+    const dl = $(dlId);
+    const options = dl ? [...dl.options] : [];
+    let html = '<option value=""></option>';
+    for (const o of options) {
+        const val = o.value;
+        const label = o.textContent && o.textContent !== val ? `${val}（${o.textContent}）` : val;
+        html += `<option value="${escAttr(val)}"${val === selected ? ' selected' : ''}>${escAttr(label)}</option>`;
+    }
+    return html;
+}
+
+/**
+ * 配置条件/效果参数输入：引用类（带 list）改造成真正的下拉，列出全部候选
+ * （datalist 输入点击时浏览器只显示与当前值匹配的项，无法列出全部）；
+ * 返回实际的控件元素（select 或原 input），调用方需接收返回值。
+ */
 function configureParamInput(inp, cfg) {
-    if (!cfg) { inp.classList.add('hidden'); inp.value = ''; return; }
+    if (!cfg) { inp.classList.add('hidden'); inp.value = ''; return inp; }
     inp.classList.remove('hidden');
+    if (cfg.list) {
+        const sel = document.createElement('select');
+        sel.className = inp.className;
+        sel.innerHTML = refOptionsHtmlFromDl(cfg.list, inp.value || '');
+        sel.value = inp.value || '';
+        inp.replaceWith(sel);
+        return sel;
+    }
     inp.type = cfg.type;
     inp.placeholder = cfg.ph;
     if (cfg.list) inp.setAttribute('list', cfg.list);
     else inp.removeAttribute('list');
+    return inp;
 }
 
 function fillRefDatalists() {
@@ -683,11 +717,13 @@ function addRuleRow(rule) {
     const row = ce('div', 'npc-rule-row');
     const typeSel = ce('select', 'nr-cond-type');
     typeSel.innerHTML = optionsHtml(COND_OPTIONS, t);
-    const param = ce('input', 'nr-cond-param');
-    configureParamInput(param, COND_PARAM_CFG[t]);
+    let param = ce('input', 'nr-cond-param');
+    param = configureParamInput(param, COND_PARAM_CFG[t]);
     param.value = cond && t ? (t === 'gold_gte' ? cond[t] : cond[t]) : '';
     typeSel.addEventListener('change', () => {
-        configureParamInput(param, COND_PARAM_CFG[typeSel.value]);
+        param = configureParamInput(param, COND_PARAM_CFG[typeSel.value]);
+        // 引用型下拉在 change 后若不保留值，清空（避免残留上一个类型的值）
+        param.value = '';
     });
     const nodeInp = ce('input', 'nr-node');
     nodeInp.setAttribute('list', 'npc-dl-nodes');
@@ -707,6 +743,12 @@ function addNodeCard(nodeId, node) {
     const idInp = ce('input', 'nnode-id');
     idInp.value = nodeId;
     idInp.placeholder = '节点 ID（如 greet）';
+    // 已有节点改名会涉及全树连线重映射，统一到画布抽屉做（自动重映射）；
+    // 新建节点（nodeId 为空）仍在此处填写 ID
+    if (nodeId) {
+        idInp.readOnly = true;
+        idInp.title = '节点 ID 改名请到「画布编辑」选中该节点修改（会自动同步所有连线）';
+    }
     idInp.addEventListener('input', refreshNodeDatalist);
     const delNode = ce('button', 'ed-btn mini danger', '删除节点');
     delNode.type = 'button';
@@ -750,11 +792,12 @@ function addChoiceRow(box, choice) {
     const condSel = ce('select', 'nc-cond-type');
     const t = condTypeOf(ch.if);
     condSel.innerHTML = optionsHtml(COND_OPTIONS, t);
-    const condParam = ce('input', 'nc-cond-param');
-    configureParamInput(condParam, COND_PARAM_CFG[t]);
+    let condParam = ce('input', 'nc-cond-param');
+    condParam = configureParamInput(condParam, COND_PARAM_CFG[t]);
     condParam.value = ch.if && t ? ch.if[t] : '';
     condSel.addEventListener('change', () => {
-        configureParamInput(condParam, COND_PARAM_CFG[condSel.value]);
+        condParam = configureParamInput(condParam, COND_PARAM_CFG[condSel.value]);
+        condParam.value = ch.if && condSel.value ? ch.if[condSel.value] : '';
     });
     line2.append('下一节点', nextInp, '显示条件', condSel, condParam);
 
@@ -814,8 +857,8 @@ function renderEffectParams(typeSel, paramsBox, eff) {
         return;
     }
 
-    const param = ce('input', 'ne-param');
-    configureParamInput(param, EFFECT_PARAM_CFG[t]);
+    let param = ce('input', 'ne-param');
+    param = configureParamInput(param, EFFECT_PARAM_CFG[t]);
     param.value = eff ? (eff.item || eff.flag || eff.scene || eff.enemy ||
         (eff.amount != null ? eff.amount : '')) : '';
     paramsBox.appendChild(param);
@@ -1014,10 +1057,13 @@ function renderEventWhen(when) {
     const t = condTypeOf(when);
     const typeSel = ce('select', 'ew-cond-type');
     typeSel.innerHTML = optionsHtml(COND_OPTIONS, t);
-    const param = ce('input', 'ew-cond-param');
-    configureParamInput(param, COND_PARAM_CFG[t]);
+    let param = ce('input', 'ew-cond-param');
+    param = configureParamInput(param, COND_PARAM_CFG[t]);
     param.value = when && t ? when[t] : '';
-    typeSel.addEventListener('change', () => configureParamInput(param, COND_PARAM_CFG[typeSel.value]));
+    typeSel.addEventListener('change', () => {
+        param = configureParamInput(param, COND_PARAM_CFG[typeSel.value]);
+        param.value = '';
+    });
     box.append(typeSel, param);
 }
 
