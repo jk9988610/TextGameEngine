@@ -5,7 +5,8 @@
  *  - 数据源：全局 DATA.npcs[id]（editor.js loadData 拉取）；抽屉编辑直接改内存对象。
  *  - 保存：显式点「保存」/Ctrl+S，直接提交 DATA.npcs[id] 全字段走 /api/editor/npc
  *    （后端校验不绕过）；坐标仍走防抖 /api/editor/npc-layout/<id> 独立通道。
- *  - 每 NPC 的平移/缩放视图偏好存 localStorage（仅本机，非游戏数据）。
+ *  - 不做浏览器持久化：平移/缩放/面板刷新即复位；「开始对话」卡坐标与普通卡片一样
+ *    存 npc_layouts.json（保留键 __start__）；设置偏好存 editor_settings.json。
  *
  * 依赖：window.Drawflow（vendored）、window.GraphModel（graph_model.js）、
  *       editor.js 的全局 DATA 与条件/效果控件构造器（addChoiceRow/addEffectRow 等）。
@@ -15,31 +16,34 @@
 
   const G_COARSE = 28, G_FINE = 14;
   const GM = window.GraphModel;
-  const VIEW_LS_KEY = "tge_canvas_views_v1";
-  const PANEL_LS_KEY = "tge_canvas_panel_open";
-  const STARTPOS_LS_KEY = "tge_canvas_startpos_v1";
-  const SETTINGS_KEY = "tge_editor_settings_v1";
   const CLICK_THRESHOLD = 4;   // 左键按下后位移 ≤4px 视为点击（开抽屉），超过则是拖卡
   const ID_PATTERN = /^[a-z0-9_]{1,32}$/;
+  /* 「开始对话」合成卡在 npc_layouts.json 中的保留键：它虽不是对话节点，
+   *  但和普通卡片一样持久化坐标（同一条防抖 layout 通道），不做任何特殊重置 */
+  const START_CARD_ID = "__start__";
 
-  /* 编辑器本机偏好：平移固定右键；收起属性栏键 collapse: middle|right；自动保存默认关 */
-  const settings = loadSettings();
-  function loadSettings() {
-    try {
-      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-      return {
-        collapse: s.collapse === "right" ? "right" : "middle",
-        autosave: !!s.autosave,
-      };
-    } catch (_) { return { collapse: "middle", autosave: false }; }
-  }
-  function saveSettings() {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  }
+  /* 编辑器偏好（自动保存/收起键）：初始默认值先用于首屏，loadData 后由 editor.js
+   * 用 editor_settings.json 的内容覆盖；设置弹窗的每次修改防抖 POST 回该文件。
+   * 挂在 window 上供 scene_canvas.js 共享同一个自动保存开关，绝不使用浏览器存储。 */
+  window.EditorSettings = window.EditorSettings || { collapse: "middle", autosave: false };
+  const settings = window.EditorSettings;
+  let settingsTimer = null;
+  const saveSettings = () => {
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(() => {
+      fetch("/api/editor/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collapse: settings.collapse, autosave: settings.autosave }),
+      }).then(r => r.json()).then(res => {
+        if (!res || !res.success) console.warn("编辑器设置保存失败：", res && res.message);
+      }).catch(err => console.warn("编辑器设置保存失败：", err));
+    }, 200);
+  };
   const panButton = () => 2;                    // 平移键固定右键
   const collapseButton = () => settings.collapse === "right" ? 2 : 1;  // 右键/中键
 
-  /* 编辑器设置弹窗（脚本加载即可用，不依赖画布挂载；所有改动立即保存） */
+  /* 编辑器设置弹窗（脚本加载即可用，不依赖画布挂载；所有改动当次会话立即生效） */
   function initSettingsModal() {
     const overlay = $("es-overlay");
     if (!overlay) return;
@@ -126,6 +130,7 @@
     $("cw-st-npc-label").textContent = "对话";
     $("cw-st-nodes-label").textContent = "节点";
     $("cw-add").textContent = "＋ 卡片";
+    $("cw-autolayout").classList.add("hidden");
     $("nci-edit-npc").classList.remove("hidden");
     if (prefId && DATA.npcs[prefId]) view.npcId = prefId;
     else if (!view.npcId || !DATA.npcs[view.npcId]) {
@@ -134,7 +139,6 @@
     refreshNpcOptions();
     mount();
     render();
-    applyView();
     syncStatus();
   }
 
@@ -156,7 +160,7 @@
       view.selNode = null;
     }
     refreshNpcOptions();
-    if (view.mounted) { render(); applyView(); }
+    if (view.mounted) render();   // 实例不重建：平移/缩放作为会话内状态自然保留
   }
 
   window.NpcCanvas = { enter, exit, refresh };
@@ -174,10 +178,24 @@
     fillRefDatalists();                 // 物品/敌人/地点候选（抽屉条件/效果用）
     bindEditorEvents();
     bindDomEvents();
-    setPanel(localStorage.getItem(PANEL_LS_KEY) !== "0");
+    setPanel(true);                     // 每次进入默认展开属性栏（不做浏览器持久化）
     $("cw-snap").checked = view.snap;
     $("cw-grid").value = String(view.grid);
     box().style.setProperty("--nc-grid", view.grid + "px");
+    centerOrigin();                     // 初始视图：(0,0) 格落在视口中心
+    requestAnimationFrame(centerOrigin);   // 兜底：首帧布局完成后再校正一次
+  }
+
+  /** 视图复位：zoom=1 且让世界坐标 (0,0) 格居中显示在视口 */
+  function centerOrigin() {
+    const ed = view.editor;
+    if (!ed || !view.mounted) return;
+    ed.zoom = 1;
+    ed.canvas_x = box().clientWidth / 2;
+    ed.canvas_y = box().clientHeight / 2;
+    ed.precanvas.style.transform =
+      `translate(${ed.canvas_x}px, ${ed.canvas_y}px) scale(1)`;
+    updateZoomLabel();
   }
 
   function unmount() {
@@ -221,13 +239,11 @@
         return;
       }
     }
-    saveViewNow();                      // 记住旧 NPC 的视图
     view.npcId = id;
     view.selNode = null;
     view.dirty = false;
     updateDirty();
     render();
-    applyView();
     showPlaceholder();
     syncStatus();
   }
@@ -271,7 +287,8 @@
     syncStatus();
   }
 
-  /** 开始对话卡片：位置取记录值（可拖动保存），无记录时放最左入口向左一列 */
+  /** 开始对话卡片：位置与普通卡片一样取 npc_layouts.json（保留键 __start__），
+   *  拖动保存、刷新/重进后原地恢复；从未摆过才默认放最左入口向左一列 */
   function renderStartCard(g, npc) {
     // 入口 = 默认入口 + 每条条件问候（graph_model 已并入 graph.entries）
     const entries = (g.entries || [])
@@ -283,16 +300,11 @@
       .map(en => g.nodes.find(n => n.id === en.node))
       .filter(Boolean);
     if (!refs.length) { view.startDfId = null; return; }
-    // 用记录位置（用户手动摆放），没有记录才默认放最左入口左侧
-    const saved = readStartPos(npc.id);
-    let startX, startY;
-    if (saved && Number.isFinite(saved.x)) {
-      startX = saved.x; startY = saved.y;
-    } else {
-      const minX = Math.min(...refs.map(r => r.x));
-      startX = minX - 280;            // 一列卡片宽的距离
-      startY = refs[0].y;
-    }
+    // 用户摆过就用记录位置（与普通卡片完全同通道）；否则默认最左入口左侧一列
+    const saved = curLayout()[START_CARD_ID];
+    const startX = saved && Number.isFinite(saved.x) ? saved.x
+      : Math.min(...refs.map(r => r.x)) - 280;
+    const startY = saved && Number.isFinite(saved.y) ? saved.y : refs[0].y;
 
     const html =
       `<div class="nc-node-head start-head">▶ 开始对话</div>` +
@@ -347,21 +359,6 @@
     view.renderTimer = setTimeout(render, 60);
   }
 
-  /** 开始卡位置记录（本机偏好；拖动保存，不随入口自动对齐） */
-  function readStartPos(npcId) {
-    if (!npcId) return null;
-    try { return (JSON.parse(localStorage.getItem(STARTPOS_LS_KEY) || "{}") || {})[npcId] || null; }
-    catch (_) { return null; }
-  }
-  function writeStartPos(npcId, x, y) {
-    if (!npcId || !Number.isFinite(x)) return;
-    try {
-      const all = JSON.parse(localStorage.getItem(STARTPOS_LS_KEY) || "{}") || {};
-      all[npcId] = { x, y };
-      localStorage.setItem(STARTPOS_LS_KEY, JSON.stringify(all));
-    } catch (_) {}
-  }
-
   /* ================= Drawflow 事件 → 内存数据 ================= */
   function bindEditorEvents() {
     const ed = view.editor;
@@ -414,14 +411,14 @@
     // 单卡拖动结束：吸附 + 保存坐标
     ed.on("nodeMoved", dfId => {
       if (dfId === view.startDfId) {
-        // 开始卡允许拖动：吸附并把位置记录到本机偏好（不进 npc_layouts）
+        // 开始卡与普通卡一样：吸附定位后走同一条防抖坐标保存（__start__ 保留键）
         const d = liveData()[dfId];
         d.pos_x = view.snap ? snap(d.pos_x) : Math.round(d.pos_x);
         d.pos_y = view.snap ? snap(d.pos_y) : Math.round(d.pos_y);
         const el = box().querySelector(`#node-${dfId}`);
         if (el) { el.style.left = d.pos_x + "px"; el.style.top = d.pos_y + "px"; }
         ed.updateConnectionNodes("node-" + dfId);
-        writeStartPos(view.npcId, d.pos_x, d.pos_y);
+        scheduleLayoutSave();
         return;
       }
       if (view.snap) {
@@ -434,7 +431,7 @@
       scheduleLayoutSave();
     });
     ed.on("zoom", updateZoomLabel);
-    ed.on("translate", () => { updateZoomLabel(); saveViewSoon(); });
+    ed.on("translate", updateZoomLabel);
   }
 
   function markDirty() {
@@ -760,6 +757,11 @@
       const id = view.idMap[dfId];
       if (id) layout[id] = { x: snap(d.pos_x), y: snap(d.pos_y) };
     }
+    // 「开始对话」合成卡与普通卡同等待遇：位置写保留键 __start__
+    if (view.startDfId != null && exp[view.startDfId]) {
+      const sd = exp[view.startDfId];
+      layout[START_CARD_ID] = { x: snap(sd.pos_x), y: snap(sd.pos_y) };
+    }
     try {
       await fetch(`/api/editor/npc-layout/${encodeURIComponent(view.npcId)}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -906,7 +908,6 @@
     view.editor.precanvas.style.transform =
       `translate(${view.editor.canvas_x}px, ${view.editor.canvas_y}px) scale(${z})`;
     updateZoomLabel();
-    saveViewSoon();
   }
 
   function onMouseMove(e) {
@@ -989,7 +990,7 @@
         const el = box().querySelector(`#node-${dfId}`);
         if (el) { el.style.left = d.pos_x + "px"; el.style.top = d.pos_y + "px"; }
         view.editor.updateConnectionNodes("node-" + dfId);
-        writeStartPos(view.npcId, d.pos_x, d.pos_y);
+        scheduleLayoutSave();   // 与普通卡同通道持久化（__start__ 保留键）
       }
       return;
     }
@@ -1064,37 +1065,6 @@
     box().querySelectorAll(".multi-sel").forEach(el => el.classList.remove("multi-sel"));
   }
 
-  /* ================= 每 NPC 视图（平移/缩放）localStorage 持久化 ================= */
-  function readViews() {
-    try { return JSON.parse(localStorage.getItem(VIEW_LS_KEY) || "{}"); } catch (_) { return {}; }
-  }
-  function saveViewNow() {
-    if (!view.mounted || !view.npcId) return;
-    const all = readViews();
-    all[view.npcId] = {
-      x: view.editor.canvas_x, y: view.editor.canvas_y, zoom: view.editor.zoom,
-    };
-    localStorage.setItem(VIEW_LS_KEY, JSON.stringify(all));
-  }
-  let viewTimer = null;
-  function saveViewSoon() {
-    clearTimeout(viewTimer);
-    viewTimer = setTimeout(saveViewNow, 400);
-  }
-  function applyView() {
-    if (!view.mounted || !view.npcId) return;
-    const v = readViews()[view.npcId];
-    if (v && Number.isFinite(v.x)) {
-      view.editor.canvas_x = v.x; view.editor.canvas_y = v.y;
-      view.editor.zoom = v.zoom || 1;
-      view.editor.precanvas.style.transform =
-        `translate(${v.x}px, ${v.y}px) scale(${v.zoom || 1})`;
-    } else {
-      view.editor.zoom_reset();
-    }
-    updateZoomLabel();
-  }
-
   /* ================= 底栏 / 抽屉 ================= */
   function updateZoomLabel() {
     if (!view.mounted) return;
@@ -1118,7 +1088,6 @@
   function setPanel(open) {
     inspector().classList.toggle("collapsed", !open);
     $("cw-panel-toggle").classList.toggle("active", !open);
-    try { localStorage.setItem(PANEL_LS_KEY, open ? "1" : "0"); } catch (_) {}
   }
 
   function addNode() {
@@ -1192,7 +1161,7 @@
     $("cw-save").onclick = () => save();   // 不能直接传 save（事件对象会被当成 opts.silent）
     $("cw-zin").onclick = () => view.editor.zoom_in();
     $("cw-zout").onclick = () => view.editor.zoom_out();
-    $("cw-zreset").onclick = () => view.editor.zoom_reset();
+    $("cw-zreset").onclick = centerOrigin;   // 复位 = 100% 缩放且 (0,0) 格回中
     $("cw-panel-toggle").onclick = () =>
       setPanel(inspector().classList.contains("collapsed"));
     // 回列表编辑该 NPC 的基本信息/问候规则 → 改为弹窗修改 NPC 信息（不离开画布）

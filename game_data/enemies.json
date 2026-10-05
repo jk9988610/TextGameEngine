@@ -17,15 +17,21 @@
     "hp": 60,
     "attack": 7,
     "defense": 2,
-    "heavy_attack": 12,
     "description": "一尊半人高的石之守卫，胸口嵌着一枚温热发亮的核晶，千百年来寸步不离地守着洞穴深处的石台。",
     "reward_items": [
       "guardian_core"
     ],
     "reward_gold": 20,
+    "heavy_attack": 12,
     "brain": {
-      "rhythm": ["bash", "bash", "charge"],
-      "frenzy_rhythm": ["bash", "charge"],
+      "rhythm": [
+        "bash",
+        "charge"
+      ],
+      "frenzy_rhythm": [
+        "bash",
+        "charge"
+      ],
       "dodge_player_charge": false,
       "low_hp_mode": "frenzy",
       "low_hp_ratio": 0.3
@@ -50,8 +56,14 @@
       ]
     },
     "intents": {
-      "charge": ["蓄力重击", "下一拍重击 12 点！它本拍不会出手——攻击可以打断蓄力"],
-      "heavy": ["蓄力重击", "重击 12 点，格挡受 5 点，闪避可完全避开"]
+      "charge": [
+        "蓄力重击",
+        "下一拍重击 12 点！它本拍不会出手——攻击可以打断蓄力"
+      ],
+      "heavy": [
+        "蓄力重击",
+        "重击 12 点，格挡受 5 点，闪避可完全避开"
+      ]
     }
   }
 }

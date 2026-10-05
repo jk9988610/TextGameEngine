@@ -253,6 +253,13 @@ class GameClient:
             f"/api/editor/scene-layout/{urllib.parse.quote(scene_id)}", pos)
         return d
 
+    # ---------- 编辑器设置（偏好，独立通道 editor_settings.json） ----------
+    def editor_settings_get(self) -> dict:
+        return self.editor_data().get("editor_settings") or {}
+    def editor_settings_save(self, payload: dict) -> dict:
+        _, d = self.post("/api/editor/settings", payload)
+        return d
+
     # ---------- 清理 ----------
     def cleanup_saves(self, db_path: str = DEFAULT_DB) -> int:
         """删掉本 client 在 SQLite 里留下的所有存档槽，返回删除行数。"""
@@ -271,10 +278,10 @@ class GameClient:
 # 编辑器数据快照 / 还原
 # ============================================================
 def editor_snapshot(c: GameClient) -> dict:
-    """跑用例前拍下 scenes/items/enemies/npcs/config/layouts 六份数据的深拷贝。"""
+    """跑用例前拍下 scenes/items/enemies/npcs/config/layouts/editor_settings 数据的深拷贝。"""
     d = c.editor_data()
-    return {k: copy.deepcopy(d[k]) for k in
-            ("scenes", "items", "enemies", "npcs", "config", "layouts")}
+    return {k: copy.deepcopy(d.get(k)) for k in
+            ("scenes", "items", "enemies", "npcs", "config", "layouts", "editor_settings")}
 
 
 def editor_restore(c: GameClient, snap: dict) -> None:
@@ -333,6 +340,10 @@ def editor_restore(c: GameClient, snap: dict) -> None:
     for npc_id in c.layout_all():
         if npc_id not in snap_layouts:
             c.layout_save(npc_id, {})
+
+    # 4) 编辑器偏好还原（独立文件，直接整体写回即可）
+    if snap.get("editor_settings") is not None:
+        c.editor_settings_save(snap["editor_settings"])
 
 
 def cleanup_qa_saves(db_path: str = DEFAULT_DB) -> int:

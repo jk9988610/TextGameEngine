@@ -15,8 +15,9 @@
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
 
-  /* 默认布局：新节点按 BFS 顺序阶梯摆放（单位像素，由画布层再吸附网格） */
-  const DEFAULT_X = 56, DEFAULT_Y = 84;
+  /* 默认布局：以画布原点 (0,0)（视口中心）为起点，新节点按 BFS 顺序蛇形阶梯摆放；
+   *  单位像素，由画布层再吸附网格 */
+  const DEFAULT_X = 0, DEFAULT_Y = 0;
   const COL_DX = 420, ROW_DY = 168;
 
   /**
@@ -110,11 +111,13 @@
   }
 
   /**
-   * pruneLayout：剔除布局里已不在 nodeIds 中的节点坐标
+   * pruneLayout：剔除布局里已不在 nodeIds 中的节点坐标。
+   * 保留键 "__start__" 是「开始对话」合成卡的坐标（不是对话节点，但同样持久化）。
    * @returns {{layout:object, removed:string[]}}
    */
   function pruneLayout(layout, nodeIds) {
     const keep = new Set(nodeIds);
+    keep.add("__start__");
     const out = {}, removed = [];
     for (const [id, pos] of Object.entries(layout || {})) {
       if (keep.has(id)) out[id] = pos; else removed.push(id);

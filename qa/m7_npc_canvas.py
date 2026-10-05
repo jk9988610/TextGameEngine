@@ -4,18 +4,48 @@
 浏览器内 graph_model.js 的纯函数与拉线 UI 交互由人工走查（无 JS 运行时，
 见 m7 plan 人工清单）；本套件覆盖所有可经 API 验证的后端/数据契约。
 """
+import tempfile
+
 from qa.tge_api import (
     GameClient,
     QaRunner,
     editor_snapshot,
     editor_restore,
 )
+from engine.editor_manager import EditorManager
 
 SUITE = "M7 NPC 画布布局"
 
 
+def run_unit(r: QaRunner) -> None:
+    """纯函数段：开始卡保留键 __start__ 的落盘与修剪保护（临时目录，不碰工程数据）。"""
+    r.section("G0 开始卡 __start__ 坐标与普通节点同通道")
+    with tempfile.TemporaryDirectory() as tmp:
+        em = EditorManager(data_dir=tmp)
+        ok = em.save_layout("qa_n", {
+            "greet": {"x": 28, "y": 56},
+            "__start__": {"x": -420, "y": 0},
+        })
+        r.check("G0-开始卡坐标可保存", ok.get("success") and ok.get("nodes") == 2, ok)
+        got = em.load_layouts().get("qa_n", {})
+        r.check("G0-开始卡坐标回读",
+                got.get("__start__") == {"x": -420, "y": 0}
+                and got.get("greet") == {"x": 28, "y": 56}, got)
+        # 保存 NPC（节点只剩 greet）触发修剪：孤儿节点清掉，__start__ 必须保留
+        em.prune_layouts({"qa_n": {"nodes": {"greet": {}}}})
+        kept = em.load_layouts()["qa_n"]
+        r.check("G0-修剪保留开始卡键",
+                set(kept) == {"greet", "__start__"}
+                and kept["__start__"] == {"x": -420, "y": 0}, kept)
+        # NPC 整体删除时布局（含 __start__）一并删除
+        em.prune_layouts({})
+        r.check("G0-NPC删除布局全清", "qa_n" not in em.load_layouts(),
+                list(em.load_layouts().keys()))
+
+
 def run(r: QaRunner) -> None:
     # 与 M3~M6 套件一致：run_all 只传 runner，client 在套件内自建
+    run_unit(r)
     c = GameClient("qa_m7")
     try:
         _run(r, c)

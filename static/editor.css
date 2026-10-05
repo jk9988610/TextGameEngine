@@ -619,7 +619,18 @@ body.workbench-scenes #cw-npc { display: none; }
 .sm-row .k { color: var(--text-dim); flex: none; }
 .sm-row .v { text-align: right; }
 .sm-line { font-size: 12px; line-height: 1.7; }
-.sm-line.sm-click { cursor: pointer; }
-.sm-line.sm-click:hover { color: var(--accent); }
+/* 卡片属性栏：出口行（行内锁定/移除） */
+.sm-exit-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; }
+.sm-exit-row .sm-exit-name {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sm-mini {
+    flex: none; background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 3px; font-family: inherit; font-size: 10.5px;
+    padding: 1px 7px; cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.sm-mini:hover { color: var(--text); background: var(--bg-hover); }
+.sm-mini.sm-danger { border-color: var(--danger); color: var(--danger); }
+.sm-mini.sm-danger:hover { background: var(--danger); color: #fff; }
 .sm-dim { color: var(--text-dim); font-size: 10.5px; margin-left: 4px; }
 #nci-body .ed-check { margin: 2px 0; font-size: 12px; }

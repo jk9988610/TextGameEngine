@@ -26,6 +26,15 @@ async function loadData() {
             return;
         }
         DATA = json;
+        // 编辑器偏好来自数据文件 editor_settings.json（不用浏览器存储）。
+        // 只 Object.assign 到既有共享对象上（npc_canvas 持有同一引用），不可换对象。
+        if (json.editor_settings) {
+            window.EditorSettings = window.EditorSettings || { collapse: "middle", autosave: false };
+            Object.assign(window.EditorSettings, {
+                collapse: json.editor_settings.collapse === "right" ? "right" : "middle",
+                autosave: !!json.editor_settings.autosave,
+            });
+        }
     } catch (e) {
         toast('无法连接服务器', 'error');
         return;

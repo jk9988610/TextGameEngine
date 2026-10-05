@@ -30,7 +30,7 @@
     "cost_charge": 0,
     "cost_disengage": 2,
     "actions": {
-        "attack": {
+      "attack": {
         "label": "攻击",
         "description": "用装备造成普通武器伤害。",
         "cost": 1,
@@ -47,14 +47,25 @@
         ],
         "interactions": {
           "dodge": [
-            {"type": "miss"},
-            {"type": "expose_player", "when": "charged"}
+            {
+              "type": "miss"
+            },
+            {
+              "type": "expose_player",
+              "when": "charged"
+            }
           ],
           "brace": [
-            {"type": "miss", "when": "not_charged"}
+            {
+              "type": "miss",
+              "when": "not_charged"
+            }
           ],
           "charge": [
-            {"type": "interrupt", "when": "hit"}
+            {
+              "type": "interrupt",
+              "when": "hit"
+            }
           ]
         }
       },
@@ -64,8 +75,12 @@
         "cost": 0,
         "tag": "准备",
         "effects": [
-          {"type": "apply_state", "state": "readied", "duration_beats": 1,
-           "clear_state_on_damage": true}
+          {
+            "type": "apply_state",
+            "state": "readied",
+            "duration_beats": 1,
+            "clear_state_on_damage": true
+          }
         ]
       },
       "block": {
@@ -75,10 +90,14 @@
         "tag": "防御",
         "interactions": {
           "bash": [
-            {"type": "halve_damage_after_defense"}
+            {
+              "type": "halve_damage_after_defense"
+            }
           ],
           "heavy": [
-            {"type": "halve_damage_after_defense"}
+            {
+              "type": "halve_damage_after_defense"
+            }
           ]
         }
       },
@@ -88,7 +107,13 @@
         "cost": 2,
         "tag": "位移",
         "effects": [
-          {"type": "avoid_damage", "against": ["bash", "heavy"]}
+          {
+            "type": "avoid_damage",
+            "against": [
+              "bash",
+              "heavy"
+            ]
+          }
         ]
       }
     },
@@ -98,21 +123,6 @@
     "player_heavy_mult": 2
   },
   "event_rules": [
-    {
-      "id": "slime_drops_key_unlocks_cave",
-      "label": "击败史莱姆 → 拿到钥匙并解锁洞穴门",
-      "on": "ENEMY_KILLED",
-      "if": {
-        "enemy_id": "slime"
-      },
-      "do": [
-        {
-          "type": "unlock",
-          "scene": "forest",
-          "exit": "cave"
-        }
-      ]
-    },
     {
       "id": "claim_treasure_sets_flag",
       "label": "在洞穴捡起金币宝藏 → 标记试炼完成",
@@ -125,6 +135,21 @@
         {
           "type": "set_flag",
           "flag": "demo_complete"
+        }
+      ]
+    },
+    {
+      "id": "slime_drops_key_unlocks_cave",
+      "label": "击败史莱姆 → 拿到钥匙并解锁洞穴门",
+      "on": "ENEMY_KILLED",
+      "if": {
+        "enemy_id": "slime"
+      },
+      "do": [
+        {
+          "type": "unlock",
+          "scene": "forest",
+          "exit": "cave"
         }
       ]
     }

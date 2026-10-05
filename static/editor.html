@@ -359,6 +359,7 @@
             <span class="cw-bar-label" id="cw-mode-label">对话树</span>
             <select id="cw-npc" title="每个 NPC 一棵独立对话图"></select>
             <button type="button" id="cw-add" class="cw-tb">＋ 卡片</button>
+            <button type="button" id="cw-autolayout" class="cw-tb hidden" title="按出生点流向重新排列全部地点（出生点在最左）">自动布局</button>
             <button type="button" id="cw-save" class="cw-tb primary">保存</button>
             <span class="cw-sep"></span>
             <button type="button" id="cw-zout" class="cw-tb">−</button>
@@ -397,7 +398,7 @@
         </div>
     </div>
 
-    <!-- 编辑器设置（本机偏好，立即生效） -->
+    <!-- 编辑器设置（偏好存数据文件 editor_settings.json，不写浏览器存储） -->
     <div id="es-overlay" class="ed-modal-overlay hidden">
         <div class="ed-modal" role="dialog" aria-label="编辑器设置">
             <h3>编辑器设置</h3>
@@ -413,9 +414,9 @@
             </div>
             <label class="ed-check">
                 <input type="checkbox" id="es-autosave">
-                <span>自动保存画布改动（停顿约 1.5 秒后自动保存当前 NPC；关闭则手动点「保存」）</span>
+                <span>自动保存画布改动（停顿约 1.5 秒后自动保存当前内容；关闭则手动点「保存」）</span>
             </label>
-            <p class="ed-tip">这些设置只保存在你当前浏览器里，修改立即生效，与游戏数据无关。</p>
+            <p class="ed-tip">设置保存在数据文件 editor_settings.json 中（刷新后保留），不写入浏览器存储；游戏内容仍全部保存在各自的数据文件中。</p>
             <div class="ed-form-actions">
                 <button type="button" class="ed-btn primary" id="es-close">关闭</button>
             </div>

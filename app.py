@@ -579,6 +579,7 @@ def editor_get_data():
         "config": GAME_DATA["config"],
         "layouts": EDITOR.load_layouts(),
         "scene_layouts": EDITOR.load_scene_layouts(),
+        "editor_settings": EDITOR.load_editor_settings(),
         "initial_scene": (GAME_DATA.get("config") or {}).get("initial_scene", ""),
     })
 
@@ -618,6 +619,15 @@ def editor_save_scene_layout(scene_id):
     if denied:
         return denied
     return EDITOR.save_scene_layout(scene_id, request.json or {})
+
+
+@app.route('/api/editor/settings', methods=['POST'])
+def editor_save_settings():
+    """保存编辑器偏好（自动保存/收起键；写入 editor_settings.json，非游戏内容）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    return EDITOR.save_editor_settings(request.json or {})
 
 
 @app.route('/api/editor/item', methods=['POST'])

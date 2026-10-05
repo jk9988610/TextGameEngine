@@ -56,6 +56,7 @@ class EditorManager:
             "config": "game_config.json",
             "layouts": "npc_layouts.json",   # 画布手动布局坐标（非游戏内容）
             "scene_layouts": "scene_layouts.json",  # 场景地图画布坐标（非游戏内容）
+            "editor_settings": "editor_settings.json",  # 编辑器偏好（非游戏内容）
         }
         self._lock = threading.Lock()  # 写盘串行化，避免并发保存互相覆盖
 
@@ -458,6 +459,9 @@ class EditorManager:
 
     # ---------- NPC 画布布局（坐标；非游戏内容，独立于 npc_dialogues.json） ----------
     LAYOUT_RANGE = (-10000, 10000)
+    # 「开始对话」合成卡的布局保留键（不是对话节点，但坐标与普通节点同通道持久化，
+    # 修剪孤儿坐标时必须保留；ID_PATTERN 同样接受该键）
+    START_CARD_ID = "__start__"
 
     def load_layouts(self) -> Dict[str, Dict[str, Dict[str, int]]]:
         """读取全部布局：{npc_id: {node_id: {x,y}}}；文件缺失/损坏按空处理。"""
@@ -503,8 +507,9 @@ class EditorManager:
             for npc_id in list(layouts.keys()):
                 if npc_id not in npcs:
                     del layouts[npc_id]; changed = True; continue
-                # 删除该 NPC 已不存在节点的坐标
+                # 删除该 NPC 已不存在节点的坐标（__start__ 是开始卡保留键，始终保留）
                 valid_ids = set((npcs[npc_id] or {}).get("nodes", {}).keys())
+                valid_ids.add(self.START_CARD_ID)
                 kept = {nid: p for nid, p in layouts[npc_id].items() if nid in valid_ids}
                 if len(kept) != len(layouts[npc_id]):
                     layouts[npc_id] = kept; changed = True
@@ -537,6 +542,44 @@ class EditorManager:
             layouts[scene_id] = {"x": x, "y": y}
             self._write_json("scene_layouts", layouts)
         return {"success": True, "id": scene_id}
+
+    # ---------- 编辑器设置（偏好；非游戏内容，独立于游戏数据文件） ----------
+    DEFAULT_EDITOR_SETTINGS: Dict[str, Any] = {"collapse": "middle", "autosave": False}
+
+    def _clean_settings(self, data: Any) -> Dict[str, Any]:
+        """按白名单清洗设置；未知键/非法值一律回默认。"""
+        clean = dict(self.DEFAULT_EDITOR_SETTINGS)
+        if isinstance(data, dict):
+            if data.get("collapse") in ("middle", "right"):
+                clean["collapse"] = data["collapse"]
+            if isinstance(data.get("autosave"), bool):
+                clean["autosave"] = data["autosave"]
+        return clean
+
+    def load_editor_settings(self) -> Dict[str, Any]:
+        """读取编辑器偏好；文件缺失/损坏按默认 {collapse:'middle', autosave:False}。"""
+        try:
+            data = self.load("editor_settings")
+        except (json.JSONDecodeError, OSError):
+            return dict(self.DEFAULT_EDITOR_SETTINGS)
+        return self._clean_settings(data)
+
+    def save_editor_settings(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """合并保存编辑器偏好（仅 collapse∈middle/right、autosave 布尔两个白名单键）。"""
+        if not isinstance(payload, dict):
+            return {"success": False, "message": "设置必须是 JSON 对象"}
+        if "collapse" in payload and payload["collapse"] not in ("middle", "right"):
+            return {"success": False, "message": "收起/展开按键取值非法"}
+        if "autosave" in payload and not isinstance(payload["autosave"], bool):
+            return {"success": False, "message": "自动保存必须是 true/false"}
+        with self._lock:
+            clean = self.load_editor_settings()
+            if "collapse" in payload:
+                clean["collapse"] = payload["collapse"]
+            if "autosave" in payload:
+                clean["autosave"] = payload["autosave"]
+            self._write_json("editor_settings", clean)
+        return {"success": True, "settings": clean}
 
     # ---------- 内部：开局配置清洗/校验 ----------
     def _clean_and_validate_config(self, payload: Dict[str, Any],
