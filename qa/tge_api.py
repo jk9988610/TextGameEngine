@@ -208,12 +208,12 @@ class GameClient:
         return d
 
     def editor_save(self, kind: str, payload: dict) -> dict:
-        """kind: 'scene' | 'item' | 'enemy'。"""
+        """kind: 'scene' | 'item' | 'character' | 'tag'。
+
+        payload 就是数据文件里的形状：tags 列表 + 各标签字段平铺键 + 可选
+        对话树 / Beat 配置，原样回放即可（字段按 tags.json 的规格归一）。
+        """
         payload = copy.deepcopy(payload)
-        if kind == "item" and "currency_value" in payload:
-            # 前端靠 is_currency 复选框决定是否保留 currency_value，
-            # 直接回放数据文件时必须补上，否则还原会把货币字段洗掉
-            payload.setdefault("is_currency", True)
         _, d = self.post(f"/api/editor/{kind}", payload)
         return d
 
@@ -278,27 +278,29 @@ class GameClient:
 # 编辑器数据快照 / 还原
 # ============================================================
 def editor_snapshot(c: GameClient) -> dict:
-    """跑用例前拍下 scenes/items/enemies/npcs/config/layouts/editor_settings 数据的深拷贝。"""
+    """跑用例前拍下 tags/scenes/items/characters/config/layouts/editor_settings 的深拷贝。"""
     d = c.editor_data()
     return {k: copy.deepcopy(d.get(k)) for k in
-            ("scenes", "items", "enemies", "npcs", "config", "layouts", "editor_settings")}
+            ("tags", "scenes", "items", "characters", "config",
+             "layouts", "editor_settings")}
 
 
 def editor_restore(c: GameClient, snap: dict) -> None:
     """把编辑器数据还原到快照：先 upsert 旧实体（恢复内容/引用），再删测试新增实体。
 
-    顺序按引用关系：还原 scenes→items→enemies→npcs→config（config 的事件规则
-    引用所有实体，必须最后存）；删除反向 npcs→enemies→items→scenes。
+    顺序按引用关系：还原 tags→scenes→items→characters→config（config 的事件规则
+    引用所有实体，必须最后存）；删除 scenes→characters→items（角色被场景的
+    enemies_here 引用、物品被场景与角色掉落引用，都得等前面的引用消失）。
     """
-    # 1) 内容还原
+    # 1) 内容还原（标签是物品/角色字段的来源，先还原标签）
+    for tag in (snap.get("tags") or {}).values():
+        c.editor_save("tag", tag)
     for scene in snap["scenes"].values():
         c.editor_save("scene", scene)
     for item in snap["items"].values():
         c.editor_save("item", item)
-    for enemy in snap["enemies"].values():
-        c.editor_save("enemy", enemy)
-    for npc in snap["npcs"].values():
-        c.editor_save("npc", npc)
+    for char in (snap.get("characters") or {}).values():
+        c.editor_save("character", char)
     if "config" in snap:
         c.config_save(snap["config"])
         # config_save 只覆盖开局字段、保留 event_rules —— 规则集需要单独还原
@@ -310,17 +312,8 @@ def editor_restore(c: GameClient, snap: dict) -> None:
             if rule["id"] not in snap_rules:
                 c.event_rule_delete(rule["id"])
 
-    # 2) 删除测试新增实体（NPC 引用场景/物品/敌人，最先删）
-    live = c.editor_data()
-    for nid in list(live["npcs"].keys()):
-        if nid not in snap["npcs"]:
-            c.editor_delete("npc", nid)
-    for eid in list(live["enemies"].keys()):
-        if eid not in snap["enemies"]:
-            c.editor_delete("enemy", eid)
-    for iid in list(live["items"].keys()):
-        if iid not in snap["items"]:
-            c.editor_delete("item", iid)
+    # 2) 删除测试新增实体：先删场景（测试场景可能互相引用出口，重试几轮），
+    #    再删角色（可能还被上面某个测试场景的 enemies_here 引用），最后删物品
     for _ in range(3):
         live_scenes = c.editor_data()["scenes"]
         extras = [sid for sid in live_scenes if sid not in snap["scenes"]]
@@ -332,6 +325,19 @@ def editor_restore(c: GameClient, snap: dict) -> None:
             progress = progress or r.get("success", False)
         if not progress:
             break
+    live = c.editor_data()
+    for cid in (live.get("characters") or {}):
+        if cid not in (snap.get("characters") or {}):
+            c.editor_delete("character", cid)
+    for iid in list(c.editor_data()["items"].keys()):
+        if iid not in snap["items"]:
+            c.editor_delete("item", iid)
+
+    # 2.5) 删除测试新增标签（物品已还原，不会再引用它们）
+    live_tags = c.editor_data().get("tags") or {}
+    for tid in list(live_tags.keys()):
+        if tid not in (snap.get("tags") or {}):
+            c.editor_delete("tag", tid)
 
     # 3) 布局还原（独立通道）：快照里的逐份写回，快照外的写空删除
     snap_layouts = snap.get("layouts") or {}

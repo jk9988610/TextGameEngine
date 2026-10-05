@@ -4,23 +4,29 @@
 M5 起，对话选项/事件规则的"条件"和"效果"全部走这里，引擎里不再写死
 任何具体游戏内容（如 cave_goblin/rusty_key）。
 
-条件（纯函数，只读 game_state）：
-  {"flag": "name"}                 标志为真值
-  {"flag": "name", "value": x}     标志等于 x
-  {"has_item": "item_id"}          背包里有某物
-  {"enemy_killed": "enemy_id"}     某敌人已被永久击杀
-  {"gold_gte": n}                  金币至少 n
+P2 起进一步"槽位开放"：可用条目清单不再写在本模块，而由数据侧事件字典
+（game_data/events.json）决定。本模块只提供少量**原子**（atom）——真正
+求值/执行的最小逻辑；字典条目通过 atom 字段复用它们，因此可以改写标签、
+参数默认值，甚至新增自定义条目。
 
-效果（EffectExecutor.apply，按顺序执行，返回人类可读消息）：
-  {"type": "set_flag", "flag": "x", "value": true}
-  {"type": "give_item", "item": "id"}        货币类物品自动折算金币
-  {"type": "remove_item", "item": "id"}      没有也不报错（任务收物）
-  {"type": "heal", "amount": n}
-  {"type": "max_hp", "amount": n}            上限与当前 HP 同增减
-  {"type": "gold", "amount": n}
-  {"type": "teleport", "scene": "id"}
-  {"type": "start_combat", "enemy": "id"}
-  {"type": "unlock", "scene": "id", "exit": "id"}   解锁某场景的出口锁
+原子契约：
+条件（fn(state, cond, key)，key = 条件字典里的判别键，也就是取值字段名）：
+  flag           标志为真值（可选 value 表示等于某值）
+  has_item       背包里有某物
+  enemy_killed   某敌人已被永久击杀
+  gold_gte       金币至少 n
+  （条目 key 必须是自己 params 里的一个字段名；改名即改取值字段，
+    因此别名可自由命名参数，如 {"key":"rich","atom":"gold_gte"} 读 cond["rich"]）
+效果（handler(eff)，字段名固定，字典条目的 params 必须覆盖标 * 的字段）：
+  set_flag       *flag               可选 value
+  give_item      *item               货币类物品自动折算金币
+  remove_item    *item               没有也不报错（任务收物）
+  heal           *amount
+  max_hp         *amount             上限与当前 HP 同增减
+  gold           *amount
+  teleport       *scene
+  start_combat   *enemy
+  unlock         *scene *exit        解锁某场景的出口锁
 
 依赖通过构造函数注入，不 import app.py。
 """
@@ -28,32 +34,74 @@ from typing import Dict, Any, List, Optional
 
 
 # ============================================================
+# 条件原子
+# ============================================================
+def _cond_flag(state: Dict[str, Any], cond: Dict[str, Any], key: str) -> bool:
+    name = cond.get(key)
+    flags = state.get("flags", {}) or {}
+    if "value" in cond:
+        return flags.get(name) == cond["value"]
+    return bool(flags.get(name))
+
+
+def _cond_has_item(state: Dict[str, Any], cond: Dict[str, Any], key: str) -> bool:
+    return cond.get(key) in state.get("player_inventory", [])
+
+
+def _cond_enemy_killed(state: Dict[str, Any], cond: Dict[str, Any], key: str) -> bool:
+    return cond.get(key) in state.get("killed_enemies", [])
+
+
+def _cond_gold_gte(state: Dict[str, Any], cond: Dict[str, Any], key: str) -> bool:
+    try:
+        return int(state.get("player_gold", 0)) >= int(cond.get(key))
+    except (TypeError, ValueError):
+        return False
+
+
+# 合法条件原子名（编辑器据此校验字典条目绑定的原子是否存在）。
+# 条件原子的取值字段就是「条目 key」本身（见上方契约），所以字典条目可以
+# 自由命名别名参数（如 rich 复用 gold_gte），无需再约束参数名。
+CONDITION_ATOMS = {
+    "flag": _cond_flag,
+    "has_item": _cond_has_item,
+    "enemy_killed": _cond_enemy_killed,
+    "gold_gte": _cond_gold_gte,
+}
+
+# 效果原子的参数名是固定的（handler 直接读 eff["amount"] 等），
+# 编辑器据此校验字典条目的 params 是否配得对。
+EFFECT_ATOM_FIELDS = {
+    "set_flag": ("flag",),
+    "give_item": ("item",),
+    "remove_item": ("item",),
+    "heal": ("amount",),
+    "max_hp": ("amount",),
+    "gold": ("amount",),
+    "teleport": ("scene",),
+    "start_combat": ("enemy",),
+    "unlock": ("scene", "exit"),
+}
+
+
+# ============================================================
 # 条件求值
 # ============================================================
-def condition_matches(state: Dict[str, Any], cond: Optional[Dict[str, Any]]) -> bool:
-    """对 game_state 求值一个条件；None/空条件视为无条件满足。"""
+def condition_matches(state: Dict[str, Any], cond: Optional[Dict[str, Any]],
+                      atom_map: Optional[Dict[str, str]] = None) -> bool:
+    """对 game_state 求值一个条件；None/空条件视为无条件满足。
+
+    :param atom_map: 字典的 {条目 key: 原子名}；缺省时条目 key 即原子名。
+    """
     if not cond:
         return True
 
-    if "flag" in cond:
-        name = cond["flag"]
-        flags = state.get("flags", {}) or {}
-        if "value" in cond:
-            return flags.get(name) == cond["value"]
-        return bool(flags.get(name))
-
-    if "has_item" in cond:
-        return cond["has_item"] in state.get("player_inventory", [])
-
-    if "enemy_killed" in cond:
-        return cond["enemy_killed"] in state.get("killed_enemies", [])
-
-    if "gold_gte" in cond:
-        try:
-            return int(state.get("player_gold", 0)) >= int(cond["gold_gte"])
-        except (TypeError, ValueError):
-            return False
-
+    for key in cond:
+        if key == "value":       # value 只是 flag 原子的附加参数，不是判别键
+            continue
+        fn = CONDITION_ATOMS.get((atom_map or {}).get(key, key))
+        if fn is not None:
+            return bool(fn(state, cond, key))
     # 未知条件类型：保守地不满足（编辑器校验会拦，这是运行时兜底）
     return False
 
@@ -65,16 +113,24 @@ class EffectExecutor:
     """按顺序执行对话/事件效果。跨系统动作通过注入的子系统完成。"""
 
     def __init__(self, game_data: Dict[str, Any], game_state: Dict[str, Any],
-                 scene_manager=None, item_system=None, combat_system=None):
+                 scene_manager=None, item_system=None, combat_system=None,
+                 event_dict: Optional[Dict[str, Any]] = None):
         self._data = game_data
         self._state = game_state
         self._sm = scene_manager
         self._items = item_system
         self._combat = combat_system
+        # 事件字典（可用条目清单）；缺省时条目 key 即原子名，等价于旧行为
+        event_dict = event_dict if event_dict is not None else (game_data or {}).get("events")
+        event_dict = event_dict or {}
+        self._effect_atoms = {e["key"]: (e.get("atom") or e["key"])
+                              for e in event_dict.get("effects", []) if e.get("key")}
+        self._cond_atoms = {e["key"]: (e.get("atom") or e["key"])
+                            for e in event_dict.get("conditions", []) if e.get("key")}
 
     def condition_matches(self, cond: Optional[Dict[str, Any]]) -> bool:
         """对当前玩家状态求值世界条件（供事件规则的 when 使用）。"""
-        return condition_matches(self._state, cond)
+        return condition_matches(self._state, cond, self._cond_atoms)
 
     def apply(self, effects: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -86,7 +142,8 @@ class EffectExecutor:
 
         for eff in effects or []:
             etype = eff.get("type")
-            handler = self._handlers().get(etype)
+            # 字典条目（type）→ 引擎原子；字典缺省时两者相同
+            handler = self._handlers().get(self._effect_atoms.get(etype, etype))
             if handler is None:
                 messages.append(f"未知效果类型：{etype}")
                 continue

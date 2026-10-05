@@ -28,8 +28,8 @@
             <div class="ed-tabs">
                 <button class="ed-tab active" data-tab="scenes" type="button">地点</button>
                 <button class="ed-tab" data-tab="items" type="button">物品</button>
-                <button class="ed-tab" data-tab="enemies" type="button">敌人</button>
-                <button class="ed-tab" data-tab="npcs" type="button">NPC</button>
+                <button class="ed-tab" data-tab="tags" type="button">标签</button>
+                <button class="ed-tab" data-tab="characters" type="button">角色</button>
                 <button class="ed-tab" data-tab="events" type="button">事件</button>
             </div>
             <button class="ed-btn block" id="btn-new" type="button">+ 新建</button>
@@ -74,10 +74,10 @@
                 </div>
 
                 <div class="ed-field">
-                    <span>出没的敌人（勾选已创建的敌人；指向还没建的敌人时填下面的 ID 框）</span>
+                    <span>出没的角色（勾选已创建的角色；指向还没建的角色时填下面的 ID 框）</span>
                     <div class="ed-check-group" id="scene-enemies"></div>
                     <input type="text" id="scene-enemies-raw"
-                           placeholder="其他敌人 ID（指向还没建的敌人时用，逗号分隔）">
+                           placeholder="其他角色 ID（指向还没建的角色时用，逗号分隔）">
                 </div>
 
                 <div class="ed-form-actions">
@@ -102,30 +102,11 @@
                     <span>描述</span>
                     <textarea id="item-desc" rows="4" placeholder="物品说明文字"></textarea>
                 </label>
-                <label class="ed-check">
-                    <input type="checkbox" id="item-is-weapon">
-                    <span>这是武器（可以在战斗中装备攻击）</span>
-                </label>
-                <label class="ed-field hidden" id="item-damage-field">
-                    <span>伤害值</span>
-                    <input type="number" id="item-damage" min="0" step="1" value="5">
-                </label>
-                <label class="ed-check">
-                    <input type="checkbox" id="item-usable">
-                    <span>可使用（消耗品，例如治疗药水，使用后从背包消耗一瓶）</span>
-                </label>
-                <label class="ed-field hidden" id="item-heal-field">
-                    <span>使用后恢复的生命值（0 = 不回血）</span>
-                    <input type="number" id="item-heal" min="0" step="1" value="50">
-                </label>
-                <label class="ed-check">
-                    <input type="checkbox" id="item-currency">
-                    <span>这是货币类物品（拾取/获得后不进背包，自动折算成金币余额）</span>
-                </label>
-                <label class="ed-field hidden" id="item-currency-field">
-                    <span>面值（一枚折算多少金币）</span>
-                    <input type="number" id="item-currency-value" min="1" step="1" value="1">
-                </label>
+                <div class="ed-field">
+                    <span>标签（勾上标签就展开它自带的字段组；标签在「标签」页签定义）</span>
+                    <div id="item-tags"></div>
+                </div>
+                <div id="item-tag-fields"></div>
 
                 <div class="ed-form-actions">
                     <button type="button" class="ed-btn primary" id="item-save">保存</button>
@@ -134,45 +115,97 @@
                 </div>
             </form>
 
-            <!-- 敌人表单 -->
-            <form class="ed-form hidden" id="form-enemy">
-                <h2 id="enemy-form-title">新建敌人</h2>
+            <!-- 标签表单（标签 = 目标类型 + 字段组，贴到物品/地点/角色上就展开对应字段） -->
+            <form class="ed-form hidden" id="form-tag">
+                <h2 id="tag-form-title">新建标签</h2>
                 <label class="ed-field">
-                    <span>敌人 ID（小写字母/数字/下划线，保存后不可改）</span>
-                    <input type="text" id="enemy-id" placeholder="例：forest_wolf">
+                    <span>标签 ID（小写字母/数字/下划线，保存后不可改）</span>
+                    <input type="text" id="tag-id" placeholder="例：weapon">
+                </label>
+                <label class="ed-field">
+                    <span>标签名称（编辑器里显示的名字）</span>
+                    <input type="text" id="tag-label" placeholder="例：武器">
+                </label>
+                <label class="ed-field">
+                    <span>贴在什么上（物品 / 地点 / 角色）</span>
+                    <select id="tag-target">
+                        <option value="item">物品</option>
+                        <option value="scene">地点</option>
+                        <option value="character">角色</option>
+                    </select>
+                </label>
+                <div class="ed-field">
+                    <span>字段组（贴了该标签的对象会多出这些字段；key 保存后不可改）</span>
+                    <div id="tag-fields"></div>
+                    <button type="button" class="ed-btn mini" id="tag-add-field">+ 添加字段</button>
+                </div>
+                <label class="ed-field">
+                    <span>运行时兼容键（可选：引擎核心仍读旧键时填，例：is_weapon。留空 = 不派生）</span>
+                    <input type="text" id="tag-runtime-flag" placeholder="例：is_weapon">
+                </label>
+
+                <div class="ed-form-actions">
+                    <button type="button" class="ed-btn primary" id="tag-save">保存</button>
+                    <button type="button" class="ed-btn danger hidden" id="tag-delete">删除</button>
+                    <button type="button" class="ed-btn" id="tag-cancel">取消</button>
+                </div>
+            </form>
+
+            <!-- 角色表单（基础字段 + 标签字段组；贴「可对话」展开对话编辑区，贴「敌人」展开 Beat 配置） -->
+            <form class="ed-form hidden" id="form-character">
+                <h2 id="character-form-title">新建角色</h2>
+                <label class="ed-field">
+                    <span>角色 ID（小写字母/数字/下划线，保存后不可改）</span>
+                    <input type="text" id="character-id" placeholder="例：forest_wolf">
                 </label>
                 <label class="ed-field">
                     <span>名称</span>
-                    <input type="text" id="enemy-name" placeholder="例：森林野狼">
+                    <input type="text" id="character-name" placeholder="例：森林野狼">
                 </label>
                 <label class="ed-field">
-                    <span>描述（玩家挑战前看到的文字）</span>
-                    <textarea id="enemy-desc" rows="3" placeholder="例：一匹眼露凶光的灰狼，獠牙上挂着口水。"></textarea>
+                    <span>描述</span>
+                    <textarea id="character-desc" rows="3" placeholder="例：一匹眼露凶光的灰狼，獠牙上挂着口水。"></textarea>
                 </label>
-                <div class="ed-field-row">
-                    <label class="ed-field">
-                        <span>生命值 HP</span>
-                        <input type="number" id="enemy-hp" min="1" step="1" value="30">
-                    </label>
-                    <label class="ed-field">
-                        <span>攻击力</span>
-                        <input type="number" id="enemy-attack" min="0" step="1" value="5">
-                    </label>
-                    <label class="ed-field">
-                        <span>防御力</span>
-                        <input type="number" id="enemy-defense" min="0" step="1" value="2">
-                    </label>
-                    <label class="ed-field">
-                        <span>金币掉落（0 = 不掉金币）</span>
-                        <input type="number" id="enemy-gold" min="0" step="1" value="0">
-                    </label>
-                </div>
+
                 <div class="ed-field">
-                    <span>战利品（击杀后掉落在地上，需要玩家拾取；货币类物品会自动折算金币）</span>
-                    <div class="ed-check-group" id="enemy-rewards"></div>
+                    <span>标签（角色的能力由标签决定：勾「可对话」出现对话编辑区，勾「敌人（可战斗）」出现 Beat 配置；标签在「标签」页签定义）</span>
+                    <div id="character-tags"></div>
+                </div>
+                <div id="character-tag-fields"></div>
+
+                <!-- 对话编辑区（贴 talkable 标签时显示） -->
+                <div class="hidden" id="character-dialogue-box">
+                    <p class="ed-tip">对话节点：每个节点是该角色说的一段话 + 玩家可选的选项；选项的「下一节点」为空 = 结束对话。可视化拉线请切到顶栏「画布编辑」。</p>
+                    <label class="ed-field">
+                        <span>所在地点</span>
+                        <select id="npc-scene"></select>
+                    </label>
+                    <label class="ed-field">
+                        <span>默认起始节点 ID</span>
+                        <input type="text" id="npc-greeting" placeholder="greet" value="greet">
+                    </label>
+
+                    <div class="ed-field">
+                        <span>条件问候（按顺序判断，第一个满足条件的节点作为对话起点；都不满足用默认起始节点）</span>
+                        <div id="npc-rules"></div>
+                        <button type="button" class="ed-btn mini" id="npc-add-rule">+ 添加条件问候</button>
+                    </div>
+
+                    <div class="ed-field">
+                        <span>对话节点</span>
+                        <div id="npc-nodes"></div>
+                        <button type="button" class="ed-btn mini" id="npc-add-node">+ 添加节点</button>
+                    </div>
+
+                    <!-- 动态下拉候选（节点/物品/敌人/地点） -->
+                    <datalist id="npc-dl-nodes"></datalist>
+                    <datalist id="npc-dl-items"></datalist>
+                    <datalist id="npc-dl-enemies"></datalist>
+                    <datalist id="npc-dl-scenes"></datalist>
                 </div>
 
-                <details class="ed-field" id="enemy-beat-box">
+                <!-- Beat 战斗配置（贴 enemy 标签时显示） -->
+                <details class="ed-field hidden" id="character-beat-box">
                     <summary>Beat 战斗配置（可选：留空 = 用引擎默认决策器）</summary>
                     <div class="ed-field-row">
                         <label class="ed-field">
@@ -215,54 +248,9 @@
                 </details>
 
                 <div class="ed-form-actions">
-                    <button type="button" class="ed-btn primary" id="enemy-save">保存</button>
-                    <button type="button" class="ed-btn danger hidden" id="enemy-delete">删除</button>
-                    <button type="button" class="ed-btn" id="enemy-cancel">取消</button>
-                </div>
-            </form>
-
-            <!-- NPC 表单（属性 + 问候规则 + 对话节点树，列表式编辑） -->
-            <form class="ed-form hidden" id="form-npc">
-                <h2 id="npc-form-title">新建 NPC</h2>
-                <label class="ed-field">
-                    <span>NPC ID（小写字母/数字/下划线，保存后不可改）</span>
-                    <input type="text" id="npc-id" placeholder="例：npc_merchant">
-                </label>
-                <label class="ed-field">
-                    <span>名称</span>
-                    <input type="text" id="npc-name" placeholder="例：杂货商老杰克">
-                </label>
-                <label class="ed-field">
-                    <span>所在地点</span>
-                    <select id="npc-scene"></select>
-                </label>
-                <label class="ed-field">
-                    <span>默认起始节点 ID</span>
-                    <input type="text" id="npc-greeting" placeholder="greet" value="greet">
-                </label>
-
-                <div class="ed-field">
-                    <span>条件问候（按顺序判断，第一个满足条件的节点作为对话起点；都不满足用默认起始节点）</span>
-                    <div id="npc-rules"></div>
-                    <button type="button" class="ed-btn mini" id="npc-add-rule">+ 添加条件问候</button>
-                </div>
-
-                <div class="ed-field">
-                    <span>对话节点（每个节点是 NPC 说的一段话 + 玩家可选的选项；选项的「下一节点」为空 = 结束对话。可视化拉线请切到顶栏「画布编辑」）</span>
-                    <div id="npc-nodes"></div>
-                    <button type="button" class="ed-btn mini" id="npc-add-node">+ 添加节点</button>
-                </div>
-
-                <!-- 动态下拉候选（节点/物品/敌人/地点） -->
-                <datalist id="npc-dl-nodes"></datalist>
-                <datalist id="npc-dl-items"></datalist>
-                <datalist id="npc-dl-enemies"></datalist>
-                <datalist id="npc-dl-scenes"></datalist>
-
-                <div class="ed-form-actions">
-                    <button type="button" class="ed-btn primary" id="npc-save">保存</button>
-                    <button type="button" class="ed-btn danger hidden" id="npc-delete">删除</button>
-                    <button type="button" class="ed-btn" id="npc-cancel">取消</button>
+                    <button type="button" class="ed-btn primary" id="character-save">保存</button>
+                    <button type="button" class="ed-btn danger hidden" id="character-delete">删除</button>
+                    <button type="button" class="ed-btn" id="character-cancel">取消</button>
                 </div>
             </form>
 
@@ -357,7 +345,7 @@
             <button type="button" id="cw-panel-toggle" class="cw-tb" title="收纳/展开属性栏（Ctrl+B）">☰</button>
             <span class="cw-sep"></span>
             <span class="cw-bar-label" id="cw-mode-label">对话树</span>
-            <select id="cw-npc" title="每个 NPC 一棵独立对话图"></select>
+            <select id="cw-npc" title="每个可对话角色一棵独立对话图"></select>
             <button type="button" id="cw-add" class="cw-tb">＋ 卡片</button>
             <button type="button" id="cw-autolayout" class="cw-tb hidden" title="按出生点流向重新排列全部地点（出生点在最左）">自动布局</button>
             <button type="button" id="cw-save" class="cw-tb primary">保存</button>
@@ -375,7 +363,7 @@
         <aside id="nc-inspector">
             <div class="nci-head">
                 <span id="nci-title">节点属性</span>
-                <button type="button" id="nci-edit-npc" class="cw-tb mini">NPC 设置</button>
+                <button type="button" id="nci-edit-npc" class="cw-tb mini">角色设置</button>
             </div>
             <div id="nci-body" class="nci-body">
                 <div class="nci-empty" id="nci-placeholder">在画布上点选一张卡片进行编辑</div>
@@ -423,12 +411,12 @@
         </div>
     </div>
 
-    <!-- NPC 信息编辑弹窗（属性栏「NPC 设置」打开，不离开画布） -->
+    <!-- 角色信息编辑弹窗（属性栏「角色设置」打开，不离开画布） -->
     <div id="npc-edit-overlay" class="ed-modal-overlay hidden">
-        <div class="ed-modal" role="dialog" aria-label="NPC 信息">
-            <h3 id="npc-edit-title">NPC 信息</h3>
+        <div class="ed-modal" role="dialog" aria-label="角色信息">
+            <h3 id="npc-edit-title">角色信息</h3>
             <label class="ed-field">
-                <span>NPC ID（保存后不可改）</span>
+                <span>角色 ID（保存后不可改）</span>
                 <input type="text" id="npc-edit-id" readonly>
             </label>
             <label class="ed-field">

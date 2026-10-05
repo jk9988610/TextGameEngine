@@ -1,0 +1,94 @@
+{
+  "weapon": {
+    "label": "武器",
+    "target": "item",
+    "runtime": {
+      "flag": "is_weapon"
+    },
+    "fields": [
+      {
+        "key": "damage",
+        "label": "伤害值",
+        "type": "int",
+        "default": 5,
+        "min": 0
+      }
+    ]
+  },
+  "consumable": {
+    "label": "可使用（消耗品）",
+    "target": "item",
+    "runtime": {
+      "flag": "usable"
+    },
+    "fields": [
+      {
+        "key": "heal",
+        "label": "使用后恢复的生命值（0 = 不回血）",
+        "type": "int",
+        "default": 30,
+        "min": 0
+      }
+    ]
+  },
+  "currency": {
+    "label": "货币类物品",
+    "target": "item",
+    "fields": [
+      {
+        "key": "currency_value",
+        "label": "面值（一枚折算多少金币）",
+        "type": "int",
+        "default": 1,
+        "min": 1
+      }
+    ]
+  },
+  "enemy": {
+    "label": "敌人（可战斗）",
+    "target": "character",
+    "fields": [
+      {
+        "key": "hp",
+        "label": "生命值 HP",
+        "type": "int",
+        "default": 30,
+        "min": 1,
+        "max": 999999
+      },
+      {
+        "key": "attack",
+        "label": "攻击力",
+        "type": "int",
+        "default": 5,
+        "min": 0,
+        "max": 999999
+      },
+      {
+        "key": "defense",
+        "label": "防御力",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "max": 999999
+      },
+      {
+        "key": "reward_items",
+        "label": "战利品（击杀后掉落在地上，需玩家拾取）",
+        "type": "item_list"
+      },
+      {
+        "key": "reward_gold",
+        "label": "金币掉落（0 = 不掉金币）",
+        "type": "int",
+        "default": 0,
+        "min": 0
+      }
+    ]
+  },
+  "talkable": {
+    "label": "可对话",
+    "target": "character",
+    "fields": []
+  }
+}

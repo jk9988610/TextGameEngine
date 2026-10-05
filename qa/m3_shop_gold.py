@@ -19,7 +19,7 @@ BREAD = {
     "id": "qa_bread",
     "name": "QA面包",
     "description": "QA 专用零金币商品，套件结束应被自动删除。",
-    "usable": True,
+    "tags": ["consumable"],
     "heal": 10,
 }
 
@@ -92,11 +92,12 @@ def run(r: QaRunner) -> None:
                 any("无法获得" in w for w in res.get("warnings", [])),
                 res.get("warnings"))
         r.check("weapon-neg-damage-blocked",
-                c.editor_save("item", {**BREAD, "id": "qa_bad", "is_weapon": True,
-                                       "damage": -1, "usable": False}).get("success") is False)
+                c.editor_save("item", {**BREAD, "id": "qa_bad",
+                                       "tags": ["weapon"],
+                                       "damage": -1}).get("success") is False)
         r.check("currency-zero-blocked",
-                c.editor_save("item", {**BREAD, "id": "qa_bad", "usable": False,
-                                       "is_currency": True,
+                c.editor_save("item", {**BREAD, "id": "qa_bad",
+                                       "tags": ["currency"],
                                        "currency_value": 0}).get("success") is False)
         r.check("empty-name-blocked",
                 c.editor_save("item", {**BREAD, "id": "qa_bad", "name": ""}).get("success") is False)

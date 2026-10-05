@@ -1,10 +1,10 @@
 # TextGameEngine 文字游戏引擎
 
 Flask + 原生 HTML/CSS/JS（零前端框架、零构建步骤）的**点击式文字游戏引擎**。
-引擎逻辑与游戏数据严格分离：场景、物品、敌人、NPC 对话全部是 JSON，既能手改，也能用内置的可视化编辑器制作。
+引擎逻辑与游戏数据严格分离：场景、物品、角色（敌人 / 可对话人物）、标签全部是 JSON，既能手改，也能用内置的可视化编辑器制作。
 
 - 单机离线游玩：多槽存档 + 自动存档，存本地 SQLite
-- 可视化编辑：地点（列表 + 世界地图画布）/ 物品 / 敌人 / NPC 对话树（列表 + 拉线画布双视图）/ 商店，即改即玩
+- 可视化编辑：地点（列表 + 世界地图画布）/ 物品 / 标签 / 角色（列表 + 拉线对话画布双视图）/ 事件，即改即玩
 - 部署形态：本地 venv 直接跑，也可 Gunicorn + Nginx 部署（`deploy/`）
 
 ---
@@ -43,7 +43,8 @@ engine/                 # 引擎（与具体游戏内容无关）
   auth_manager.py       # 在线模式账号（在线已屏蔽，见第 5 节）
 game_data/              # 游戏数据（JSON，全部可配）
   game_config.json      # 初始场景/背包/金币/玩家属性/操作耗时/event_rules
-  scenes.json items.json enemies.json npc_dialogues.json
+  scenes.json items.json tags.json characters.json
+  events.json           # 事件字典：触发器/条件/效果的词汇表（P2，引擎只认槽位，条目可自定义）
   npc_layouts.json      # 对话画布的节点坐标（仅布局，非游戏内容；M7）
   scene_layouts.json    # 世界地图画布的场景坐标（仅布局，非游戏内容；M9）
   editor_settings.json  # 编辑器偏好（自动保存/收起键；仅编辑器，引擎不读；M10）
@@ -61,22 +62,40 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 | 文件 | 结构要点 |
 |---|---|
 | `scenes.json` | 场景含 `exits` / `locked_exits` / `items_here` / `shop_items:[{item_id,price}]` / `enemies_here` |
-| `items.json` | 普通物品；`is_weapon+damage` 武器；`usable+heal` 消耗品；`currency_value` 货币（拾取即折算金币，不进背包） |
-| `enemies.json` | `hp/attack/defense/reward_items/reward_gold`（金币直接入账，物品掉地上需拾取） |
-| `npc_dialogues.json` | `greeting` + `greeting_rules:[{if,node}]` 起点；`nodes` 节点树；选项可挂 `if` 条件与 `effects` 效果 |
+| `items.json` | 普通物品；`tags` 声明这个物品贴了哪些标签，标签字段（如 `damage`/`heal`/`currency_value`）平铺在物品上；货币物品拾取即折算金币、不进背包 |
+| `tags.json` | **标签定义**（编辑器「标签」页签）：`{id:{label,target,fields:[{key,label,type,default,min,max}],runtime?}}`。`target` = 贴用对象（item/scene/character）；`fields` = 贴了标签后展开的字段组；可选 `runtime.flag` 让引擎按旧键读（如 `is_weapon`）。标签可自由新增，物品字段不再硬编码 |
+| `characters.json` | **引擎唯一的「人物」概念**：基础三字段 `id/name/description` + `tags` + 各标签字段平铺。贴 `enemy` 即可战斗（该标签的字段组提供 `hp/attack/defense/reward_items/reward_gold`，金币直接入账、物品掉地上需拾取）；贴 `talkable` 即可对话（`scene_id` + `greeting` + `greeting_rules:[{if,node}]` 起点 + `nodes` 节点树，选项可挂 `if` 条件与 `effects` 效果）；两个标签可同时贴。Beat 配置（`heavy_attack`/`brain`/`telegraphs`/`intents`）与对话树不走标签字段机制，只在贴了对应标签时才清洗与校验 |
+| `events.json` | **事件字典（P2 槽位开放）**：`{triggers,conditions,effects}` 三张词汇表，每项 `{key,label,atom?,params}`。`key` 是数据里存的值，`atom` 指向引擎原子（缺省 = key），`params` 声明参数（`field/label/type(text\|int\|ref)/ref/parent/required/min/max/placeholder`，`ref` ∈ item/scene/enemy/npc/node/exit，node 依 `parent:npc_id`、exit 依 `parent:scene`）。条件条目的 `key` 必须是自己 `params` 里的一个字段名（它就是条件字典的判别键）。**手改本文件无需重启**：编辑器每次拉数据时读盘同步，新开会话即生效 |
 | `npc_layouts.json` | **仅画布坐标** `{npc_id:{node_id:{x,y}}}`，运行时引擎完全不读；节点增删后自动清孤儿坐标 |
 | `scene_layouts.json` | **仅地图坐标** `{scene_id:{x,y}}`，运行时引擎完全不读；删除场景时自动清坐标 |
 | `game_config.json` | 一切初始值：游戏标题/简介、初始场景/背包/金币/玩家属性；`event_rules` 事件规则 |
 
-**条件**（effects.py）：`{flag}` / `{has_item}` / `{enemy_killed}` / `{gold_gte}`。
-**效果**：`set_flag` / `give_item` / `remove_item` / `heal` / `max_hp` / `gold` / `teleport` / `start_combat` / `unlock`（对话选项和事件规则共用同一效果库）。
-玩家状态里的 `flags: {}` 是通用剧情标志，reset 清空，老存档读档自动补全。
+**运行时派生层（P1 角色合并的核心）**：`characters.json` 是角色的唯一权威数据；引擎启动与每次角色改动后，
+`app.py` 按标签派生出 `GAME_DATA["enemies"]`（贴了 `enemy` 的角色）与 `GAME_DATA["npcs"]`（贴了 `talkable` 的角色）
+两个**只读视图**（原地 clear+update，保证子模块持有的引用立刻看到新数据）。
+因此 `combat_system` / `npc_system` / `effects` / `beat_combat` **一行都不用改**——它们照旧读 `enemies` / `npcs`，
+而编辑器只认 `characters`（`/api/editor/character`）。场景里的物理键名 `enemies_here` 也保持不变。
+一个角色可同时贴两个标签，此时它同时出现在两个派生视图里。
+
+**条件与效果是「原子 + 字典」两层**（effects.py 只提供原子，可用清单在 `events.json`）：
+- 条件原子 4 个：`flag` / `has_item` / `enemy_killed` / `gold_gte`；效果原子 9 个：`set_flag` / `give_item` /
+  `remove_item` / `heal` / `max_hp` / `gold` / `teleport` / `start_combat` / `unlock`
+  （对话选项和事件规则共用同一份效果库）。
+- 字典条目通过 `atom` 复用原子，因此**换标签、改参数范围甚至新增条目都不用改引擎**。例：
+  `{"key":"lose_gold","label":"扣除金币","atom":"gold","params":[{"field":"amount","type":"int","min":-99999,"max":-1}]}`
+  就得到一个「扣金币」效果（数据写 `{"type":"lose_gold","amount":-5}`）；条件别名同理，
+  `{"key":"rich","atom":"gold_gte",...}` 让 `when:{"rich":1000}` 读 `cond["rich"]`。
+- 要造**全新行为**（不只是换标签/参数）才需要在 effects.py 加一个原子函数并登记进
+  `CONDITION_ATOMS` / `EFFECT_ATOM_FIELDS`；字典写坏（原子不存在、效果参数名没覆盖原子所需字段）会在保存时被拦住。
+- 玩家状态里的 `flags: {}` 是通用剧情标志，reset 清空，老存档读档自动补全。
 
 **事件规则**（config.event_rules，编辑器「事件」页签）：
 `{id, label, on, if, when?, do}`。
-- `on` 触发器 7 类：`ITEM_TAKEN` / `ITEM_USED` / `ITEM_BOUGHT` / `ENEMY_KILLED` /
-  `SCENE_ENTER` / `SCENE_LEAVE` / `NPC_TALK`
-- `if` 事件参数全等过滤（如指定 item_id/scene_id/enemy_id/npc_id+node_id；地点类留空=任意地点）
+- `on` 触发器由字典决定（默认登记 7 类）：`ITEM_TAKEN` / `ITEM_USED` / `ITEM_BOUGHT` /
+  `ENEMY_KILLED` / `SCENE_ENTER` / `SCENE_LEAVE` / `NPC_TALK`；可在 `events.json` 里登记任意事件名，
+  编辑器下拉即出现——引擎那边没有发布点的事件会静默不触发
+- `if` 事件参数全等过滤（如指定 item_id/scene_id/enemy_id/npc_id+node_id；地点类留空=任意地点），
+  字段与可空性同样来自字典的触发器 `params`
 - `when` 可选，世界状态条件（同上条件库）；和 `if` 是 AND
 - ⚠️ **规则在游戏会话创建时装配一次，编辑器改规则只对新开游戏生效（reset 不重建规则，
   要新开会话）**；编辑器保存时也有此提示。控制台 `add_item` 发的 ITEM_TAKEN 带
@@ -86,18 +105,18 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 Beat 制战斗（可选，`game_config.json` 的 `beat_combat` 块启用）：拍首敌人意图明牌（普通拍给
 模糊征兆）→ 玩家选一个主动作（攻/格挡/闪避/蓄力/脱离）→ 同拍同时结算 → 拍末 AP 回复。
 动作费用与克制关系由 `beat_combat.actions` 声明（effects/interactions），敌人行为由
-`enemies.json` 的 `brain`（节奏环/残血性格/是否会躲重击）、`telegraphs`（征兆文案）、
+`characters.json` 里贴了 `enemy` 标签的角色（派生视图 `enemies`）的 `brain`（节奏环/残血性格/是否会躲重击）、`telegraphs`（征兆文案）、
 `intents`（明牌文案）、`heavy_attack`（重击伤害）按敌覆盖，未配置走引擎默认决策器。
 经典回合制与 Beat 制由配置开关二选一，前端自动切换动作区。
 （注意：玩家自身的 attack 属性当前不参与命中，别按它算预期伤害。）
 
-**NPC 对话画布**（编辑器顶栏「列表编辑 | 画布编辑」双工作台，蓝图式）：
-- 列表工作台 = 原五页签表单；画布工作台 = 全屏画布 + 右侧 340px 属性抽屉（☰/Ctrl+B 收纳）
-  + 底栏状态栏（当前 NPC/节点数/格点坐标/缩放/吸附）。在列表选中 NPC 后切画布会跟随该 NPC。
+**角色对话画布**（编辑器顶栏「列表编辑 | 画布编辑」双工作台，蓝图式；点「角色设置」可回到列表表单）：
+- 列表工作台 = 五页签（地点/物品/标签/角色/事件）表单；画布工作台 = 全屏画布 + 右侧 340px 属性抽屉（☰/Ctrl+B 收纳）
+  + 底栏状态栏（当前角色/节点数/格点坐标/缩放/吸附）。在列表选中贴了 `talkable` 的角色后切画布会跟随它。
 - 点画布节点 → 抽屉直接编辑台词/选项/显示条件/效果（与列表共用同一套控件构造器）；
   拉线 = 选项 `next`，＋卡片 = 增节点；画布模式点「保存」/Ctrl+S 直接提交
-  `DATA.npcs[id]` 全字段走 `/api/editor/npc`（后端校验不绕过）；未保存切 NPC 有确认。
-- NPC 基本信息/问候规则仍在列表表单（抽屉「NPC 设置」一键回跳）；**节点 ID 在抽屉里可直接改名**
+  该角色全字段走 `/api/editor/character`（后端校验不绕过）；未保存切角色有确认。
+- 角色基本信息/问候规则仍在列表表单（抽屉「角色设置」一键回跳）；**节点 ID 在抽屉里可直接改名**
   （失焦/回车提交，自动重映射全树 choices.next/greeting/greeting_rules 和布局坐标；
   列表表单里已有节点 ID 只读，避免漏改引用）。
 - 左键行为：点卡片（位移≤4px）才弹出属性抽屉，拖动卡片只移动不弹窗；空白拖框多选；
@@ -109,10 +128,10 @@ Beat 制战斗（可选，`game_config.json` 的 `beat_combat` 块启用）：�
   两项偏好走独立文件 `editor_settings.json`（POST `/api/editor/settings`，白名单校验），
   不是游戏内容、引擎不读，但**不使用浏览器存储**——编辑器里一切信息都能在数据文件里找到。
 - **「▶ 开始对话」合成卡片**：画布最左侧一张只有右侧输出端口的卡片（与 LEAVE 只有左侧输入
-  口对称），从它引出该 NPC 的所有对话入口——绿色实线＝默认起始节点，橙色虚线＝每条条件
+  口对称），从它引出该角色的所有对话入口——绿色实线＝默认起始节点，橙色虚线＝每条条件
   问候（行内显示条件文本）。点它打开「入口设置」抽屉：改默认起始节点、增删条件问候
   （条件＋目标节点，复用列表表单的条件控件）；删除节点时会自动清理对入口的引用。
-  该卡不进对话数据（npc_dialogues.json），但**坐标和普通卡片完全同等待遇**：存在
+  该卡不进对话数据（`characters.json` 的对话树部分），但**坐标和普通卡片完全同等待遇**：存在
   npc_layouts.json 的保留键 `__start__`，拖动即防抖落盘，刷新/重进原地恢复；
   从未摆过时才默认放在最左入口左侧。不可删。
 - 拖动坐标走**独立通道**防抖存 `/api/editor/npc-layout/<id>` → `npc_layouts.json`，
@@ -122,7 +141,7 @@ Beat 制战斗（可选，`game_config.json` 的 `beat_combat` 块启用）：�
   换库只换后者。
 
 **世界地图画布**（地点页签或任意页签切「画布编辑」即进入，M9）：
-- 节点 = 地点卡片（名称/ID/物品·商店·敌人·NPC 数摘要、★出生点标记），连线 = 出口关系：
+- 节点 = 地点卡片（名称/ID/物品·商店·敌人·可对话角色数摘要、★出生点标记），连线 = 出口关系：
   实线＝双向通行，带箭头＝单向出口，红色虚线＝锁定出口（任一方向锁定即标红）。
 - 拉线 = 新建出口；点连线 → **线条状态**（只读：两端地点/方向/锁定）＋「删除这条线」
   （画错即删，双向线会提示一并移除）；点卡片 → 地点抽屉：出口行内「锁定/解锁」「移除」
@@ -154,20 +173,29 @@ Beat 制战斗（可选，`game_config.json` 的 `beat_combat` 块启用）：�
 里程碑：M1 引擎去游戏化 → M2 地点/物品编辑器 → M3 金币/商店/喝药 → M4 敌人编辑 →
 M5 NPC/对话/条件效果 → M6 事件规则/开局配置 → M7 NPC 对话画布 →
 M8 Beat 战斗抽离（engine/beat_combat.py）→ M9 世界地图画布 →
-M10 地图画布手感对齐（框选/群拖、线条只读+删除、出口编辑上卡片、BFS 流向锚点、编辑器零浏览器持久化）。
-后续规划：战斗深化（技能/多敌人/经验）、限量商店、任务日志 UI、场景→NPC/地图钻取。
+M10 地图画布手感对齐（框选/群拖、线条只读+删除、出口编辑上卡片、BFS 流向锚点、编辑器零浏览器持久化）→
+M11 标签驱动字段组（tags.json：物品字段不再硬编码，勾标签即展开字段组，可选 runtime.flag 派生旧键）→
+M12 角色合并（敌人 + NPC 合并为 `characters.json`：`enemy` / `talkable` 两个 character 目标标签，
+运行时派生 `enemies` / `npcs` 只读视图，编辑器合并为「角色」页签）→
+M13 事件字典（P2 槽位开放：触发器/条件/效果的可选条目移到 `events.json` 词汇表，
+引擎只留原子；编辑器表单全部按字典动态渲染，条目可自定义并热更新）。
+后续规划：战斗深化（技能/多敌人/经验）、限量商店、任务日志 UI、场景→角色/地图钻取。
 
 ---
 
 ## 4. 测试：`qa/` 包（仅 Python 标准库，无第三方依赖）
 
 ```powershell
-.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（M3~M9，210 条）
-.\.venv\Scripts\python.exe -m qa.m9_scene_canvas  # 单跑一个里程碑
+.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（自动发现 qa/m*.py 全部套件）
+.\.venv\Scripts\python.exe -m qa.m13_event_dict   # 单跑一个里程碑
 ```
 
 - 新里程碑：新建 `qa/m7_xxx.py`，提供 `SUITE` 名和 `run(r)`（套件内自建 GameClient）即可被自动发现。
-- 共享层 `qa/tge_api.py`：`GameClient`（自动带 client_id/mode、UTF-8 JSON、reset/teleport/give/set_flag/move/combat/dialogue/editor_*/config/event-rule/layout/game-info 等动词）、`editor_snapshot/editor_restore`（场景/物品/敌人/NPC/config/**layouts** 六份数据自动还原）。
+- 共享层 `qa/tge_api.py`：`GameClient`（自动带 client_id/mode、UTF-8 JSON、reset/teleport/give/set_flag/move/combat/dialogue/editor_*/config/event-rule/layout/game-info 等动词）、`editor_snapshot/editor_restore`（标签/场景/物品/角色/config/**layouts** 自动还原）。
+- **历史遗留（M3~M6）**：M3/M6 的断言指向旧剧本（tavern/初始金币 0/potion 价 1），M4/M5 还大量调用已删除的
+  `enemy` / `npc` 编辑器接口（旧 `editor_save("enemy")`、`editor_data()["enemies"]` 等）。这四套按约定先不动，
+  `run_all` 里它们失败属预期；**以 M7~M13 全绿为准**（M7/M8 已迁到「角色」接口）。
+  M13 会临时改写 `events.json` 验字典热更新，`finally` 里按原文（含格式）还原。
 - 画布的视觉/交互（拉线、框选、拖卡）不走合成点击，按 M7 计划文档的人工清单走查；
   `graph_model.js` 纯函数可在浏览器控制台直接断言（本机无 Node 运行时）。
 - 安全约定：测试实体一律 `qa_` 前缀；套件结束自动清 qa_ 存档与 game_data/*.bak；跑前确认 `app.py` 已启动。
@@ -218,9 +246,9 @@ M10 地图画布手感对齐（框选/群拖、线条只读+删除、出口编�
    `scene.shop_items` 是 join 后的 `{id,name,price}`（编辑器存的是 `{item_id,price}`），断言别取错键。
 6. **对话/战斗不自动触发**：进场景只渲染按钮，玩家点「和 XX 说话/挑战」才开始；
    玩家和敌人都保留残血、跨场景保留（战斗对象按当前场景的 enemies_here 判断 active，不在同场景则 inactive 但不清战）。
-7. **编辑器删除保护**：场景被出口引用/有玩家在场不能删；物品被放置/在售/敌人掉落/初始背包引用不能删；
-   敌人被场景引用或正被战斗不能删；NPC 正被对话不能删。QA 改编辑器数据必须走快照还原，
-   删除新增实体的顺序是 NPC→敌人→物品→场景（引用关系反向）。
+7. **编辑器删除保护**：场景被出口引用/有玩家在场不能删；物品被放置/在售/角色掉落/初始背包引用不能删；
+   角色被场景「出没的角色」引用、正被战斗或正被对话不能删；标签被物品或角色贴用不能删。
+   QA 改编辑器数据必须走快照还原，删除新增实体的顺序是 场景→角色→物品（引用关系反向）。
 8. 对话选项的效果**不在 npc_system 里执行**（引擎模块互不调用），由 `app.py` 路由层统一
    `effects.apply()`；`start_combat` 效果要强制结束对话，`teleport` 靠 SCENE_ENTER 事件结束对话。
 9. 玩家死亡：回酒馆满血复活、清战斗，无惩罚。

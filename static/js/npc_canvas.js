@@ -2,8 +2,9 @@
  *
  * 定位（见 .trae/documents/canvas_workbench_phase1_plan.md）：
  *  - 与列表编辑平级的工作台：列表 = 表单式精编；画布 = 大局拉线 + 右侧属性抽屉。
- *  - 数据源：全局 DATA.npcs[id]（editor.js loadData 拉取）；抽屉编辑直接改内存对象。
- *  - 保存：显式点「保存」/Ctrl+S，直接提交 DATA.npcs[id] 全字段走 /api/editor/npc
+ *  - 数据源：全局 DATA.npcs[id]（characters 里贴了 talkable 的派生视图，editor.js 拉取）；
+ *    抽屉编辑直接改内存对象。
+ *  - 保存：显式点「保存」/Ctrl+S，直接提交 DATA.npcs[id] 全字段走 /api/editor/character
  *    （后端校验不绕过）；坐标仍走防抖 /api/editor/npc-layout/<id> 独立通道。
  *  - 不做浏览器持久化：平移/缩放/面板刷新即复位；「开始对话」卡坐标与普通卡片一样
  *    存 npc_layouts.json（保留键 __start__）；设置偏好存 editor_settings.json。
@@ -96,12 +97,12 @@
     inspMode: "node",       // 抽屉当前模式：node（点节点）| entry（点开始卡片）
   };
 
-  const COND_LABELS = {
-    flag: "标志", has_item: "持有", enemy_killed: "已击败", gold_gte: "金币≥",
-  };
+  // 条件类型/标签均由事件字典决定（editor.js 的 condTypeOf；词典加别名这里自动跟随）
   function condLabel(cond) {
-    const k = cond && ["flag", "has_item", "enemy_killed", "gold_gte"].find(t => t in cond);
-    return k ? `${COND_LABELS[k]} ${cond[k]}` : "";
+    const k = condTypeOf(cond);
+    if (!k) return "";
+    const e = dictEntry("conditions", k);
+    return `${(e && e.label) || k} ${cond[k]}`;
   }
 
   const $ = id => document.getElementById(id);
@@ -554,7 +555,7 @@
     };
     const row = ce("div", "nci-rule-row");
     const typeSel = ce("select");
-    const t = (() => { const r = (rule || {}).if; if (!r) return ""; return ["flag","has_item","enemy_killed","gold_gte"].find(k => k in r) || ""; })();
+    const t = condTypeOf((rule || {}).if);
     typeSel.innerHTML = (c.opt.map ? c.opt.map(o =>
       `<option value="${o.v}"${o.v === t ? " selected" : ""}>${o.label}</option>`).join("") : "");
     // 条件参数：引用型（物品/敌人）用下拉列出全部候选，其余用输入框
@@ -610,7 +611,7 @@
       const rule = { node };
       if (t) {
         const raw = row.querySelector(".nr-param").value.trim();
-        rule.if = t === "gold_gte" ? { gold_gte: parseInt(raw, 10) } : { [t]: raw };
+        rule.if = buildCond(t, raw);
       }
       rules.push(rule);
     });
@@ -788,7 +789,7 @@
     if (!npc) { if (!silent) toast("请先在列表中新建并保存一个 NPC", "error"); return; }
     let data;
     try {
-      const res = await fetch("/api/editor/npc", {
+      const res = await fetch("/api/editor/character", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(npc),
       });

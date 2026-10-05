@@ -223,8 +223,8 @@ def run_unit(r):
 
 
 def run_editor(r):
-    """编辑器敌人战斗字段（brain/telegraphs/intents/heavy_attack）：自建临时敌人验证，
-    不依赖具体工程数据；测完即删。"""
+    """编辑器战斗字段（brain/telegraphs/intents/heavy_attack）：自建临时角色验证，
+    不依赖具体工程数据；测完即删。P1 起走统一「角色」接口（贴 enemy 标签）。"""
     r.section("U4 编辑器战斗字段")
     ed = GameClient(client_id="qa_beat_ed_" + uuid.uuid4().hex[:10], base=BASE)
     brain = {"rhythm": ["bash", "charge"], "dodge_player_charge": False,
@@ -232,24 +232,25 @@ def run_editor(r):
     telegraphs = {"bash": ["它压低身子，像弹簧一样逼近。"]}
     intents = {"charge": ["蓄力重击", "下一拍重击 10 点！"]}
     payload = {"id": "qa_beat_editor", "name": "QA 临时敌人", "description": "测完即删",
+               "tags": ["enemy"],
                "hp": 26, "attack": 6, "defense": 1, "reward_gold": 0, "reward_items": [],
                "heavy_attack": 12, "brain": brain, "telegraphs": telegraphs,
                "intents": intents}
-    saved = ed.editor_save("enemy", payload)
+    saved = ed.editor_save("character", payload)
     after = ed.editor_data()["enemies"].get("qa_beat_editor", {})
     r.check("editor-preserves-brain",
             saved.get("success") and after.get("brain") == brain
-            and after.get("heavy_attack") == 12, after)
+            and after.get("heavy_attack") == 12, (saved, after))
     r.check("editor-preserves-texts",
             after.get("telegraphs") == telegraphs
             and after.get("intents") == intents, after)
     bad = dict(payload)
     bad["brain"] = {"rhythm": ["bash", "fart"]}
-    saved_bad = ed.editor_save("enemy", bad)
+    saved_bad = ed.editor_save("character", bad)
     r.check("editor-bad-brain-blocked", saved_bad.get("success") is False, saved_bad)
-    deleted = ed.editor_delete("enemy", "qa_beat_editor")
+    deleted = ed.editor_delete("character", "qa_beat_editor")
     gone = "qa_beat_editor" not in ed.editor_data()["enemies"]
-    r.check("editor-cleanup", deleted.get("success") and gone, gone)
+    r.check("editor-cleanup", deleted.get("success") and gone, (deleted, gone))
 
 
 def run_http(r):

@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
-"""M7 回归套件：NPC 画布 —— 布局坐标独立通道 + 后端契约 + 内容/坐标分离。
+"""M7 回归套件：角色对话画布 —— 布局坐标独立通道 + 后端契约 + 内容/坐标分离。
 
 浏览器内 graph_model.js 的纯函数与拉线 UI 交互由人工走查（无 JS 运行时，
 见 m7 plan 人工清单）；本套件覆盖所有可经 API 验证的后端/数据契约。
+
+P1 起「角色」合并（characters.json + 派生视图 npcs），套件自建一个贴了
+`talkable` 标签的 QA 角色做内容契约验证，不再依赖具体工程里的 NPC。
 """
 import tempfile
 
@@ -14,7 +17,26 @@ from qa.tge_api import (
 )
 from engine.editor_manager import EditorManager
 
-SUITE = "M7 NPC 画布布局"
+SUITE = "M7 角色对话画布布局"
+
+CHAR_ID = "qa_m7_char"
+
+
+def _probe_char(scene_id):
+    """自建的可对话角色：greet →(ask|leave)，ask →(leave)。"""
+    return {
+        "id": CHAR_ID, "name": "QA画布角色", "description": "测完即删",
+        "tags": ["talkable"], "scene_id": scene_id,
+        "greeting": "greet", "greeting_rules": [],
+        "nodes": {
+            "greet": {"text": "你好。", "choices": [
+                {"text": "问点事", "next": "ask"},
+                {"text": "走了", "next": "leave"},
+            ]},
+            "ask": {"text": "问吧。", "choices": [{"text": "哦", "next": "leave"}]},
+            "leave": {"text": "再见。", "choices": []},
+        },
+    }
 
 
 def run_unit(r: QaRunner) -> None:
@@ -95,45 +117,59 @@ def _run(r: QaRunner, c: GameClient) -> None:
             (snap["layouts"].get("npc_2_sprite") or {}),
             c.layout_get("npc_2_sprite"))
 
-    # ---------- G4 坐标与内容分离：布局 API 不动 npc_dialogues ----------
+    # ---------- G4 坐标与内容分离：布局 API 不动 characters 内容 ----------
     r.section("G4 坐标通道不污染游戏内容")
     snap = editor_snapshot(c)
     try:
-        npc_before = c.editor_data()["npcs"]["npc_2_sprite"]
-        c.layout_save("npc_2_sprite", {"greet": {"x": 100, "y": 100}})
-        npc_after = c.editor_data()["npcs"]["npc_2_sprite"]
+        scene_id = sorted(c.editor_data()["scenes"].keys())[0]
+        created = c.editor_save("character", _probe_char(scene_id))
+        r.check("G4-QA角色已建", created.get("success") is True, created)
+        npc_before = c.editor_data()["npcs"][CHAR_ID]
+        # 角色画布的坐标写入 nodes.greet（含保留键 __start__）
+        c.layout_save(CHAR_ID, {"greet": {"x": 100, "y": 100},
+                                "__start__": {"x": -420, "y": 0}})
+        npc_after = c.editor_data()["npcs"][CHAR_ID]
         # 游戏数据里的节点不含 x/y，且内容完全没变
         greet_node = npc_after["nodes"]["greet"]
         r.check("G4-节点无坐标字段", "x" not in greet_node and "y" not in greet_node,
                 list(greet_node.keys()))
         r.check("G4-内容未被布局改动", npc_after == npc_before)
+        r.check("G4-坐标只进布局通道",
+                c.layout_get(CHAR_ID).get("greet") == {"x": 100, "y": 100}
+                and c.layout_get(CHAR_ID).get("__start__") == {"x": -420, "y": 0},
+                c.layout_get(CHAR_ID))
     finally:
+        c.editor_delete("character", CHAR_ID)
         editor_restore(c, snap)
 
-    # ---------- G3 NPC 内容保存仍正常（画布结构改动走同一出口） ----------
-    r.section("G3 NPC 内容契约不回退")
+    # ---------- G3 角色内容保存仍正常（画布结构改动走同一出口） ----------
+    r.section("G3 角色内容契约不回退")
     snap = editor_snapshot(c)
     try:
-        npc = c.editor_data()["npcs"]["npc_1_drunk"]
-        # 用 ask_key 节点做结构改动目标（其选项"谢谢提示"本就指向 leave，
-        # 改为指向 drink_no 验证 next 可被画布式写入），结束后 restore 还原
-        npc["nodes"]["ask_key"]["choices"][0]["next"] = "drink_no"
-        res = c.editor_save("npc", npc)
+        scene_id = sorted(c.editor_data()["scenes"].keys())[0]
+        c.editor_save("character", _probe_char(scene_id))
+        # 画布式结构改动：greet 的"问点事"选项从 ask 改指 leave
+        ch = c.editor_data()["characters"][CHAR_ID]
+        r.check("G3-基线选项指向ask",
+                ch["nodes"]["greet"]["choices"][0].get("next") == "ask")
+        ch["nodes"]["greet"]["choices"][0]["next"] = "leave"
+        res = c.editor_save("character", ch)
         r.check("G3-画布式结构改动能保存", res.get("success") is True, res)
-        after = c.editor_data()["npcs"]["npc_1_drunk"]
+        after = c.editor_data()["characters"][CHAR_ID]
         r.check("G3-next 写入成功",
-                after["nodes"]["ask_key"]["choices"][0].get("next") == "drink_no")
+                after["nodes"]["greet"]["choices"][0].get("next") == "leave")
 
         # 画布不会绕过校验：悬空 next 仍被后端拒绝
-        bad = c.editor_data()["npcs"]["npc_1_drunk"]
+        bad = c.editor_data()["characters"][CHAR_ID]
         bad["nodes"]["greet"]["choices"][0]["next"] = "qa_ghost_node"
         r.check("G3-悬空next仍拦截",
-                c.editor_save("npc", bad).get("success") is False)
+                c.editor_save("character", bad).get("success") is False)
     finally:
+        c.editor_delete("character", CHAR_ID)
         editor_restore(c, snap)
-    r.check("G3-还原后ask_key回基线",
-            c.editor_data()["npcs"]["npc_1_drunk"]
-            ["nodes"]["ask_key"]["choices"][0].get("next") == "leave")
+    r.check("G3-删除后派生视图不含它",
+            CHAR_ID not in (c.editor_data()["npcs"] or {}),
+            list(c.editor_data()["npcs"] or {}))
 
 
 if __name__ == "__main__":

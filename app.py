@@ -22,20 +22,45 @@ app.secret_key = os.environ.get('SECRET_KEY') or 'text-game-engine-dev-secret-ke
 DEBUG = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 
 # ---------- 加载游戏数据（全局只读，所有玩家共享） ----------
+def _derive_character_views(data: dict) -> None:
+    """从 characters.json 派生 enemies / npcs 两个只读视图（原地替换内容）。
+
+    角色（characters）是权威数据，引擎核心只认 enemies / npcs 两个键：
+      tags 含 enemy    → 出现在 enemies 视图（可战斗、可掉落）
+      tags 含 talkable → 出现在 npcs 视图（可对话）
+    原地 clear+update（而非整体替换）保证已持有同一 dict 引用的子模块立刻看到新数据。
+    """
+    chars = data.get("characters") or {}
+    enemies = {cid: c for cid, c in chars.items() if "enemy" in (c.get("tags") or [])}
+    npcs = {cid: c for cid, c in chars.items() if "talkable" in (c.get("tags") or [])}
+    data.setdefault("enemies", {}).clear()
+    data["enemies"].update(enemies)
+    data.setdefault("npcs", {}).clear()
+    data["npcs"].update(npcs)
+
+
 def load_game_data() -> dict:
     """从 JSON 文件加载游戏数据 —— 只读，所有 session 共用"""
     base = os.path.join(os.path.dirname(__file__), "game_data")
-    result = {"scenes": {}, "items": {}, "npcs": {}, "enemies": {}, "config": {}}
+    result = {"scenes": {}, "items": {}, "tags": {}, "characters": {},
+              "enemies": {}, "npcs": {}, "events": {}, "config": {}}
     for fname, key in [("scenes.json", "scenes"), ("items.json", "items"),
-                       ("npc_dialogues.json", "npcs"), ("enemies.json", "enemies"),
-                       ("game_config.json", "config")]:
+                       ("tags.json", "tags"), ("characters.json", "characters"),
+                       ("events.json", "events"), ("game_config.json", "config")]:
         path = os.path.join(base, fname)
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 result[key] = json.load(f)
+    _derive_character_views(result)
     return result
 
 GAME_DATA = load_game_data()
+
+
+def rebuild_character_views() -> None:
+    """角色数据变动后重建派生视图（enemies / npcs）"""
+    _derive_character_views(GAME_DATA)
+
 # 全局唯一的 SessionManager —— 管理所有玩家的会话
 SM = SessionManager(GAME_DATA)
 # 全局唯一的 SaveManager —— SQLite 多槽存档（默认值由 game_config 派生，兼容老存档）
@@ -570,10 +595,19 @@ def editor_get_data():
     denied = _editor_guard()
     if denied:
         return denied
+    # 事件字典是从磁盘直读的只读词汇表：编辑器每次拉数据时顺手同步进 GAME_DATA，
+    # 这样手改 events.json 后不用重启服务，新开的游戏也能用上新字典。
+    events = EDITOR.load_events()
+    GAME_DATA.setdefault("events", {}).clear()
+    GAME_DATA["events"].update(events)
     return jsonify({
         "success": True,
         "scenes": GAME_DATA["scenes"],
         "items": GAME_DATA["items"],
+        "tags": GAME_DATA["tags"],
+        "characters": GAME_DATA["characters"],
+        "events": events,
+        # enemies / npcs 是 characters 的派生物，仅供对话树/画布的条件选项使用
         "enemies": GAME_DATA["enemies"],
         "npcs": GAME_DATA["npcs"],
         "config": GAME_DATA["config"],
@@ -639,8 +673,27 @@ def editor_upsert_item():
     payload = request.json or {}
     result = EDITOR.upsert_item(
         GAME_DATA["scenes"], GAME_DATA["items"], GAME_DATA["enemies"],
-        GAME_DATA.get("config") or {}, payload)
+        GAME_DATA.get("config") or {}, GAME_DATA["tags"], payload)
     return jsonify(result)
+
+
+@app.route('/api/editor/tag', methods=['POST'])
+def editor_upsert_tag():
+    """新建/更新一个标签（标签 = 目标类型 + 字段组，物品/角色按标签展开字段）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    return jsonify(EDITOR.upsert_tag(GAME_DATA["tags"], request.json or {}))
+
+
+@app.route('/api/editor/tag/<tag_id>', methods=['DELETE'])
+def editor_delete_tag(tag_id):
+    """删除一个标签（仍有物品或角色贴用时拒绝）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    return jsonify(EDITOR.delete_tag(
+        GAME_DATA["tags"], GAME_DATA["items"], GAME_DATA["characters"], tag_id))
 
 
 @app.route('/api/editor/item/<item_id>', methods=['DELETE'])
@@ -655,67 +708,46 @@ def editor_delete_item(item_id):
     return jsonify(result)
 
 
-@app.route('/api/editor/enemy', methods=['POST'])
-def editor_upsert_enemy():
-    """新建/更新一个敌人（属性/掉落物品/金币掉落，按 id 区分新建与编辑）"""
+@app.route('/api/editor/character', methods=['POST'])
+def editor_upsert_character():
+    """新建/更新一个角色（基础字段 + 标签字段组 + 可选对话树 / Beat 配置，按 id 区分）"""
     denied = _editor_guard()
     if denied:
         return denied
     payload = request.json or {}
-    result = EDITOR.upsert_enemy(
-        GAME_DATA["items"], GAME_DATA["enemies"], payload)
+    result = EDITOR.upsert_character(
+        GAME_DATA["characters"], GAME_DATA["scenes"], GAME_DATA["items"],
+        GAME_DATA["tags"], payload)
+    if result.get("success"):
+        rebuild_character_views()  # 标签可能变化，重建 enemies / npcs 派生物
+        # 节点可能增删，顺带清理该角色的画布孤儿坐标（坐标独立保存，不影响结果）
+        EDITOR.prune_layouts(GAME_DATA["npcs"])
     return jsonify(result)
 
 
-@app.route('/api/editor/enemy/<enemy_id>', methods=['DELETE'])
-def editor_delete_enemy(enemy_id):
-    """删除一个敌人（被场景引用/有玩家正在战斗时拒绝）"""
+@app.route('/api/editor/character/<character_id>', methods=['DELETE'])
+def editor_delete_character(character_id):
+    """删除一个角色（被场景引用 / 有玩家正在与之战斗或对话时拒绝）"""
     denied = _editor_guard()
     if denied:
         return denied
-    result = EDITOR.delete_enemy(
-        GAME_DATA["scenes"], GAME_DATA["enemies"], enemy_id,
-        live_battle_ids=SM.live_battle_enemies())
-    return result
-
-
-@app.route('/api/editor/npc', methods=['POST'])
-def editor_upsert_npc():
-    """新建/更新一个 NPC（属性 + 问候规则 + 对话节点树/条件/效果，按 id 区分）"""
-    denied = _editor_guard()
-    if denied:
-        return denied
-    payload = request.json or {}
-    result = EDITOR.upsert_npc(
-        GAME_DATA["npcs"], GAME_DATA["scenes"], GAME_DATA["items"],
-        GAME_DATA["enemies"], payload)
+    result = EDITOR.delete_character(
+        GAME_DATA["scenes"], GAME_DATA["characters"], character_id,
+        live_battle_ids=SM.live_battle_enemies(),
+        live_dialogue_ids=SM.live_dialogue_npcs())
     if result.get("success"):
-        # 节点可能增删，顺带清理该 NPC 布局里的孤儿坐标（坐标独立保存，不影响结果）
+        rebuild_character_views()
         EDITOR.prune_layouts(GAME_DATA["npcs"])
-    return result
+    return jsonify(result)
 
 
 @app.route('/api/editor/npc-layout/<npc_id>', methods=['POST'])
 def editor_save_npc_layout(npc_id):
-    """保存单个 NPC 画布的节点坐标（与游戏内容分离，仅坐标）"""
+    """保存单个角色对话画布的节点坐标（与游戏内容分离，仅坐标）"""
     denied = _editor_guard()
     if denied:
         return denied
     return EDITOR.save_layout(npc_id, request.json or {})
-
-
-@app.route('/api/editor/npc/<npc_id>', methods=['DELETE'])
-def editor_delete_npc(npc_id):
-    """删除一个 NPC（有玩家正在与其对话时拒绝）"""
-    denied = _editor_guard()
-    if denied:
-        return denied
-    result = EDITOR.delete_npc(
-        GAME_DATA["npcs"], npc_id,
-        live_dialogue_ids=SM.live_dialogue_npcs())
-    if result.get("success"):
-        EDITOR.prune_layouts(GAME_DATA["npcs"])
-    return result
 
 
 @app.route('/api/editor/config', methods=['POST'])

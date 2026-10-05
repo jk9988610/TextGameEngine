@@ -15,7 +15,7 @@ Beat 制战斗（引擎模块）—— 拍制（Beat）AP+意图 战斗，从《
     interactions（miss/interrupt/halve_damage_after_defense，支持
     charged/not_charged/hit 条件）——动作与克制关系完全由配置声明。
 
-敌人数据字段（enemies.json，全部可选）：
+敌人数据字段（characters.json 里贴了 enemy 标签的角色；运行时经派生视图 enemies 读入；全部可选）：
   heavy_attack            —— 重击伤害（缺省用配置 heavy_damage）
   brain                   —— 决策器参数：rhythm / frenzy_rhythm /
                              dodge_player_charge / low_hp_mode(brace|frenzy) /

@@ -1,0 +1,171 @@
+{
+  "triggers": [
+    {
+      "key": "ITEM_TAKEN",
+      "label": "拾取物品时",
+      "params": [
+        {"field": "item_id", "label": "物品", "type": "ref", "ref": "item", "required": true},
+        {"field": "from_scene", "label": "地点", "type": "ref", "ref": "scene", "required": false}
+      ]
+    },
+    {
+      "key": "ITEM_USED",
+      "label": "使用物品时",
+      "params": [
+        {"field": "item_id", "label": "物品", "type": "ref", "ref": "item", "required": true}
+      ]
+    },
+    {
+      "key": "ITEM_BOUGHT",
+      "label": "购买物品时",
+      "params": [
+        {"field": "item_id", "label": "物品", "type": "ref", "ref": "item", "required": true},
+        {"field": "from_scene", "label": "地点", "type": "ref", "ref": "scene", "required": false}
+      ]
+    },
+    {
+      "key": "ENEMY_KILLED",
+      "label": "击败敌人时",
+      "params": [
+        {"field": "enemy_id", "label": "敌人", "type": "ref", "ref": "enemy", "required": true}
+      ]
+    },
+    {
+      "key": "SCENE_ENTER",
+      "label": "进入地点时",
+      "params": [
+        {"field": "scene_id", "label": "地点", "type": "ref", "ref": "scene", "required": true}
+      ]
+    },
+    {
+      "key": "SCENE_LEAVE",
+      "label": "离开地点时",
+      "params": [
+        {"field": "scene_id", "label": "地点", "type": "ref", "ref": "scene", "required": true}
+      ]
+    },
+    {
+      "key": "NPC_TALK",
+      "label": "对话到达节点时",
+      "params": [
+        {"field": "npc_id", "label": "NPC", "type": "ref", "ref": "npc", "required": true},
+        {"field": "node_id", "label": "对话节点", "type": "ref", "ref": "node",
+         "parent": "npc_id", "required": false}
+      ]
+    }
+  ],
+  "conditions": [
+    {
+      "key": "flag",
+      "label": "需要标志",
+      "atom": "flag",
+      "params": [
+        {"field": "flag", "label": "标志名", "type": "text", "required": true,
+         "placeholder": "标志名，如 quest_done"}
+      ]
+    },
+    {
+      "key": "has_item",
+      "label": "持有物品",
+      "atom": "has_item",
+      "params": [
+        {"field": "has_item", "label": "物品", "type": "ref", "ref": "item", "required": true}
+      ]
+    },
+    {
+      "key": "enemy_killed",
+      "label": "已击败敌人",
+      "atom": "enemy_killed",
+      "params": [
+        {"field": "enemy_killed", "label": "敌人", "type": "ref", "ref": "enemy", "required": true}
+      ]
+    },
+    {
+      "key": "gold_gte",
+      "label": "金币不少于",
+      "atom": "gold_gte",
+      "params": [
+        {"field": "gold_gte", "label": "金币数量", "type": "int", "min": 0, "required": true}
+      ]
+    }
+  ],
+  "effects": [
+    {
+      "key": "set_flag",
+      "label": "设置标志",
+      "atom": "set_flag",
+      "params": [
+        {"field": "flag", "label": "标志名", "type": "text", "required": true,
+         "placeholder": "标志名，如 quest_done"}
+      ]
+    },
+    {
+      "key": "give_item",
+      "label": "给予物品",
+      "atom": "give_item",
+      "params": [
+        {"field": "item", "label": "物品", "type": "ref", "ref": "item", "required": true}
+      ]
+    },
+    {
+      "key": "remove_item",
+      "label": "收回物品",
+      "atom": "remove_item",
+      "params": [
+        {"field": "item", "label": "物品", "type": "ref", "ref": "item", "required": true}
+      ]
+    },
+    {
+      "key": "heal",
+      "label": "治疗生命",
+      "atom": "heal",
+      "params": [
+        {"field": "amount", "label": "回复量", "type": "int",
+         "min": 1, "max": 999999, "required": true}
+      ]
+    },
+    {
+      "key": "max_hp",
+      "label": "增加生命上限",
+      "atom": "max_hp",
+      "params": [
+        {"field": "amount", "label": "上限增量", "type": "int",
+         "min": 1, "max": 999, "required": true}
+      ]
+    },
+    {
+      "key": "gold",
+      "label": "增加金币",
+      "atom": "gold",
+      "params": [
+        {"field": "amount", "label": "金币数量", "type": "int", "min": 0, "required": true}
+      ]
+    },
+    {
+      "key": "teleport",
+      "label": "传送到",
+      "atom": "teleport",
+      "params": [
+        {"field": "scene", "label": "地点", "type": "ref", "ref": "scene", "required": true}
+      ]
+    },
+    {
+      "key": "start_combat",
+      "label": "开始战斗",
+      "atom": "start_combat",
+      "params": [
+        {"field": "enemy", "label": "敌人", "type": "ref", "ref": "enemy", "required": true}
+      ]
+    },
+    {
+      "key": "unlock",
+      "label": "解锁出口",
+      "atom": "unlock",
+      "params": [
+        {"field": "scene", "label": "地点", "type": "ref", "ref": "scene", "required": true},
+        {"field": "exit", "label": "出口", "type": "ref", "ref": "exit",
+         "parent": "scene", "required": true}
+      ]
+    }
+  ]
+}

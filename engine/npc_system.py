@@ -22,6 +22,11 @@ class NPCSystem:
         self._bus = event_bus
         self._data = game_data
         self._state = game_state
+        # 事件字典里的条件 → 引擎原子映射（对话条件与事件规则共用同一份词汇表）
+        self._cond_atoms = {
+            e["key"]: (e.get("atom") or e["key"])
+            for e in (game_data or {}).get("events", {}).get("conditions", [])
+            if e.get("key")}
 
         # 【关键】初始化对话状态（和 current_scene/player_inventory 同级）
         self._state["current_dialogue"] = None  # 例如 {"npc_id": "npc_1_drunk", "node_id": "greet"}
@@ -62,7 +67,7 @@ class NPCSystem:
         for rule in npc.get("greeting_rules", []) or []:
             cond = rule.get("if")
             node_id = rule.get("node")
-            if node_id and condition_matches(self._state, cond):
+            if node_id and condition_matches(self._state, cond, self._cond_atoms):
                 return node_id
         return npc.get("greeting", "greet")
 
@@ -101,7 +106,7 @@ class NPCSystem:
         required = choice.get("requires_item")
         if required and required not in self._state.get("player_inventory", []):
             return False
-        return condition_matches(self._state, choice.get("if"))
+        return condition_matches(self._state, choice.get("if"), self._cond_atoms)
 
     # ---------- 公开接口（给路由层调用） ----------
     def get_dialogue_for_api(self) -> Dict[str, Any]:

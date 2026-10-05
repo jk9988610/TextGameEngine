@@ -2,7 +2,7 @@
  *
  * 设计原则（对应 npc_canvas_editor_plan.md）：
  *  - 纯函数，无 DOM、无 Drawflow、无网络依赖；可被 QA 直接 require/eval 测试。
- *  - 游戏内容（npc_dialogues.json 的 nodes）不含坐标；坐标来自独立 layout。
+ *  - 游戏内容（characters.json 里贴了 talkable 的角色的对话树 nodes）不含坐标；坐标来自独立 layout。
  *  - 画布编辑结构（增删节点、改 next）后用 graphToNodes 合并，
  *    节点上未在画布编辑的字段（text/if/effects/requires_item）原样保留。
  *

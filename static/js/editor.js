@@ -1,10 +1,11 @@
 /* ==========================================================================
-   editor.js —— 游戏内容编辑器逻辑（地点 / 物品 / 敌人 三个表单）
+   editor.js —— 游戏内容编辑器逻辑（地点 / 物品 / 标签 / 角色 表单）
+   角色 = 基础字段 + 标签字段组；贴 talkable 展开对话编辑区，贴 enemy 展开 Beat 配置。
    纯原生 JS，不依赖游戏页任何脚本；所有写操作走 /api/editor/* 并由后端校验。
    ========================================================================== */
 
-let DATA = { scenes: {}, items: {}, enemies: {}, npcs: {}, config: { event_rules: [] }, initial_scene: '' };
-let tab = 'scenes';          // 当前页签：scenes | items | enemies | npcs | events
+let DATA = { scenes: {}, items: {}, tags: {}, characters: {}, enemies: {}, npcs: {}, config: { event_rules: [] }, initial_scene: '' };
+let tab = 'scenes';          // 当前页签：scenes | items | tags | characters | events
 let selectedId = null;       // 正在编辑的对象 id（新建态为 null）
 let isNew = false;
 
@@ -40,6 +41,9 @@ async function loadData() {
         return;
     }
 
+    // 事件字典 → 条件下拉/参数配置/引用候选（画布模式也要，故放在 early-return 之前）
+    rebuildDictOptions();
+
     // 画布模式下重拉只刷新工作台（保持模式/选中），列表 DOM 不动
     if (document.body.classList.contains('workbench-canvas')) {
         window.NpcCanvas?.refresh();
@@ -59,8 +63,8 @@ window.EditorActions = {
     async reloadData() { return loadData(); },
     editNpc(id) {
         setWorkbench(false);
-        switchTab('npcs');
-        showForm('npcs', id);
+        switchTab('characters');
+        showForm('characters', id);
     },
     editScene(id) {
         setWorkbench(false);
@@ -70,7 +74,7 @@ window.EditorActions = {
 };
 
 /* 顶栏「列表编辑 | 画布编辑」模式开关
- * NPC 页签 = 对话树画布；地点页签（及其他页签）= 世界地图画布 */
+ * 角色页签 = 对话树画布；地点页签（及其他页签）= 世界地图画布 */
 function setWorkbench(canvasOn) {
     document.body.classList.toggle('workbench-canvas', canvasOn);
     $('mode-list').classList.toggle('active', !canvasOn);
@@ -78,7 +82,7 @@ function setWorkbench(canvasOn) {
     window.NpcCanvas?.exit();
     window.SceneCanvas?.exit();
     if (!canvasOn) return;
-    if (tab === 'npcs') window.NpcCanvas?.enter(selectedId);
+    if (tab === 'characters') window.NpcCanvas?.enter(selectedId);
     else window.SceneCanvas?.enter(tab === 'scenes' ? selectedId : null);
 }
 
@@ -98,21 +102,13 @@ function bindStaticEvents() {
     $('item-save').addEventListener('click', saveItem);
     $('item-delete').addEventListener('click', deleteItem);
     $('item-cancel').addEventListener('click', showEmpty);
-    $('item-is-weapon').addEventListener('change', (e) => {
-        $('item-damage-field').classList.toggle('hidden', !e.target.checked);
-    });
-    $('item-usable').addEventListener('change', (e) => {
-        $('item-heal-field').classList.toggle('hidden', !e.target.checked);
-    });
-    $('item-currency').addEventListener('change', (e) => {
-        $('item-currency-field').classList.toggle('hidden', !e.target.checked);
-    });
-    $('enemy-save').addEventListener('click', saveEnemy);
-    $('enemy-delete').addEventListener('click', deleteEnemy);
-    $('enemy-cancel').addEventListener('click', showEmpty);
-    $('npc-save').addEventListener('click', saveNpc);
-    $('npc-delete').addEventListener('click', deleteNpc);
-    $('npc-cancel').addEventListener('click', showEmpty);
+    $('tag-save').addEventListener('click', saveTag);
+    $('tag-delete').addEventListener('click', deleteTag);
+    $('tag-cancel').addEventListener('click', showEmpty);
+    $('tag-add-field').addEventListener('click', () => addTagFieldRow(null));
+    $('character-save').addEventListener('click', saveCharacter);
+    $('character-delete').addEventListener('click', deleteCharacter);
+    $('character-cancel').addEventListener('click', showEmpty);
     $('npc-add-rule').addEventListener('click', () => addRuleRow(null));
     $('npc-add-node').addEventListener('click', () => addNodeCard('', { text: '', choices: [] }));
     $('btn-config').addEventListener('click', openConfig);
@@ -135,11 +131,11 @@ function switchTab(next) {
         b.classList.toggle('active', b.dataset.tab === tab));
     renderList();
     showEmpty();
-    // 画布模式下切页签 = 直接切换对应画布（NPC ↔ 世界地图）
+    // 画布模式下切页签 = 直接切换对应画布（角色对话树 ↔ 世界地图）
     if (document.body.classList.contains('workbench-canvas')) {
         window.NpcCanvas?.exit();
         window.SceneCanvas?.exit();
-        if (tab === 'npcs') window.NpcCanvas?.enter(null);
+        if (tab === 'characters') window.NpcCanvas?.enter(null);
         else window.SceneCanvas?.enter(null);
     }
 }
@@ -157,7 +153,7 @@ function renderList() {
             row.innerHTML = `<div class="li-name"></div><div class="li-id"></div>`;
             row.querySelector('.li-name').textContent = name;
             row.querySelector('.li-id').textContent =
-                `${rule.id} · ${(TRIGGER_OPTIONS.find(o => o.v === rule.on) || {}).label || rule.on}`;
+                `${rule.id} · ${(triggerOptions().find(o => o.v === rule.on) || {}).label || rule.on}`;
             row.addEventListener('click', () => showForm('events', rule.id));
             listEl.appendChild(row);
         }
@@ -167,10 +163,19 @@ function renderList() {
     for (const id of sortedKeys(coll)) {
         const row = document.createElement('div');
         row.className = 'ed-list-item' + (id === selectedId ? ' selected' : '');
-        const name = coll[id].name || id;
+        // 标签用 label（没有 name 字段），副标题显示贴用对象类型；角色副标题显示已贴标签
+        const name = tab === 'tags' ? (coll[id].label || id) : (coll[id].name || id);
         row.innerHTML = `<div class="li-name"></div><div class="li-id"></div>`;
         row.querySelector('.li-name').textContent = name;
-        row.querySelector('.li-id').textContent = id;
+        let sub = id;
+        if (tab === 'tags') {
+            sub = `${id} · ${TAG_TARGET_LABELS[coll[id].target] || coll[id].target || '物品'}`;
+        } else if (tab === 'characters') {
+            const labels = (coll[id].tags || [])
+                .map(t => (DATA.tags[t] || {}).label || t);
+            if (labels.length) sub = `${id} · ${labels.join('/')}`;
+        }
+        row.querySelector('.li-id').textContent = sub;
         row.addEventListener('click', () => showForm(tab, id));
         listEl.appendChild(row);
     }
@@ -183,8 +188,8 @@ function showEmpty() {
     $('ed-empty').classList.remove('hidden');
     $('form-scene').classList.add('hidden');
     $('form-item').classList.add('hidden');
-    $('form-enemy').classList.add('hidden');
-    $('form-npc').classList.add('hidden');
+    $('form-tag').classList.add('hidden');
+    $('form-character').classList.add('hidden');
     $('form-event').classList.add('hidden');
     $('form-config').classList.add('hidden');
     renderList();
@@ -196,11 +201,8 @@ function onNew() {
     $('ed-empty').classList.add('hidden');
     renderList();
     if (tab === 'scenes') {
+        hideAllForms();
         $('form-scene').classList.remove('hidden');
-        $('form-item').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
-        $('form-event').classList.add('hidden');
         $('scene-form-title').textContent = '新建地点';
         $('scene-id').value = '';
         $('scene-id').disabled = false;
@@ -210,58 +212,36 @@ function onNew() {
         $('scene-enemies-raw').value = '';
         renderOptionGroups(null, [], [], []);
         $('scene-delete').classList.add('hidden');
-    } else if (tab === 'enemies') {
-        $('form-enemy').classList.remove('hidden');
-        $('form-scene').classList.add('hidden');
-        $('form-item').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
-        $('form-event').classList.add('hidden');
-        $('enemy-form-title').textContent = '新建敌人';
-        $('enemy-id').value = '';
-        $('enemy-id').disabled = false;
-        $('enemy-name').value = '';
-        $('enemy-desc').value = '';
-        $('enemy-hp').value = 30;
-        $('enemy-attack').value = 5;
-        $('enemy-defense').value = 2;
-        $('enemy-gold').value = 0;
-        renderEnemyRewards([]);
-        resetEnemyBeatFields(null);
-        $('enemy-delete').classList.add('hidden');
-    } else if (tab === 'npcs') {
-        $('form-npc').classList.remove('hidden');
-        $('form-scene').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-item').classList.add('hidden');
-        renderNpcForm(null);
+    } else if (tab === 'characters') {
+        hideAllForms();
+        $('form-character').classList.remove('hidden');
+        renderCharacterForm(null);
     } else if (tab === 'events') {
+        hideAllForms();
         $('form-event').classList.remove('hidden');
-        $('form-scene').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-item').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
         renderEventForm(null);
+    } else if (tab === 'tags') {
+        hideAllForms();
+        $('form-tag').classList.remove('hidden');
+        renderTagForm(null);
     } else {
+        hideAllForms();
         $('form-item').classList.remove('hidden');
-        $('form-scene').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
-        $('form-event').classList.add('hidden');
         $('item-form-title').textContent = '新建物品';
         $('item-id').value = '';
         $('item-id').disabled = false;
         $('item-name').value = '';
         $('item-desc').value = '';
-        $('item-is-weapon').checked = false;
-        $('item-damage').value = 5;
-        $('item-damage-field').classList.add('hidden');
-        $('item-usable').checked = false;
-        $('item-heal').value = 50;
-        $('item-heal-field').classList.add('hidden');
-        $('item-currency').checked = false;
-        $('item-currency-value').value = 1;
-        $('item-currency-field').classList.add('hidden');
+        renderItemTagFields(null);
         $('item-delete').classList.add('hidden');
+    }
+}
+
+// 隐藏右侧所有表单（切页签/新建前先清场）
+function hideAllForms() {
+    for (const id of ['form-scene', 'form-item', 'form-tag', 'form-character',
+                      'form-event', 'form-config']) {
+        $(id).classList.add('hidden');
     }
 }
 
@@ -273,10 +253,7 @@ function showForm(kind, id) {
     if (kind === 'scenes') {
         const s = DATA.scenes[id];
         if (!s) return;
-        $('form-item').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
-        $('form-event').classList.add('hidden');
+        hideAllForms();
         $('form-scene').classList.remove('hidden');
         $('scene-form-title').textContent = '编辑地点';
         $('scene-id').value = s.id;
@@ -291,66 +268,35 @@ function showForm(kind, id) {
         $('scene-enemies-raw').value = enemyRefs.filter(x => !knownEnemyIds.has(x)).join(', ');
         renderOptionGroups(s, s.exits || [], s.shop_items || [], enemyRefs);
         $('scene-delete').classList.toggle('hidden', id === DATA.initial_scene);
-    } else if (kind === 'enemies') {
-        const em = DATA.enemies[id];
-        if (!em) return;
-        $('form-scene').classList.add('hidden');
-        $('form-item').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
-        $('form-event').classList.add('hidden');
-        $('form-enemy').classList.remove('hidden');
-        $('enemy-form-title').textContent = '编辑敌人';
-        $('enemy-id').value = em.id;
-        $('enemy-id').disabled = true;
-        $('enemy-name').value = em.name || '';
-        $('enemy-desc').value = em.description || '';
-        $('enemy-hp').value = em.hp != null ? em.hp : 30;
-        $('enemy-attack').value = em.attack != null ? em.attack : 5;
-        $('enemy-defense').value = em.defense != null ? em.defense : 2;
-        $('enemy-gold').value = em.reward_gold != null ? em.reward_gold : 0;
-        renderEnemyRewards(em.reward_items || []);
-        resetEnemyBeatFields(em);
-        $('enemy-delete').classList.remove('hidden');
-    } else if (kind === 'npcs') {
-        const npc = DATA.npcs[id];
-        if (!npc) return;
-        $('form-scene').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-item').classList.add('hidden');
-        $('form-event').classList.add('hidden');
-        $('form-npc').classList.remove('hidden');
-        renderNpcForm(npc);
+    } else if (kind === 'characters') {
+        const ch = DATA.characters[id];
+        if (!ch) return;
+        hideAllForms();
+        $('form-character').classList.remove('hidden');
+        renderCharacterForm(ch);
     } else if (kind === 'events') {
         const rule = (DATA.config.event_rules || []).find(r => r.id === id);
         if (!rule) return;
-        $('form-scene').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-item').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
+        hideAllForms();
         $('form-event').classList.remove('hidden');
         renderEventForm(rule);
+    } else if (kind === 'tags') {
+        const spec = DATA.tags[id];
+        if (!spec) return;
+        hideAllForms();
+        $('form-tag').classList.remove('hidden');
+        renderTagForm(spec);
     } else {
         const it = DATA.items[id];
         if (!it) return;
-        $('form-scene').classList.add('hidden');
-        $('form-enemy').classList.add('hidden');
-        $('form-npc').classList.add('hidden');
-        $('form-event').classList.add('hidden');
+        hideAllForms();
         $('form-item').classList.remove('hidden');
         $('item-form-title').textContent = '编辑物品';
         $('item-id').value = it.id;
         $('item-id').disabled = true;
         $('item-name').value = it.name || '';
         $('item-desc').value = it.description || '';
-        $('item-is-weapon').checked = !!it.is_weapon;
-        $('item-damage').value = it.damage != null ? it.damage : 5;
-        $('item-damage-field').classList.toggle('hidden', !it.is_weapon);
-        $('item-usable').checked = !!it.usable;
-        $('item-heal').value = it.heal != null ? it.heal : 50;
-        $('item-heal-field').classList.toggle('hidden', !it.usable);
-        $('item-currency').checked = it.currency_value != null && it.currency_value !== undefined;
-        $('item-currency-value').value = it.currency_value != null ? it.currency_value : 1;
-        $('item-currency-field').classList.toggle('hidden', $('item-currency').checked === false);
+        renderItemTagFields(it);
         $('item-delete').classList.remove('hidden');
     }
 }
@@ -415,21 +361,6 @@ function renderOptionGroups(scene, selectedExits, shopItems, selectedEnemies) {
             `<span></span><span class="li-sub">${eid}</span>`;
         label.querySelector('span').textContent = DATA.enemies[eid].name || eid;
         enemyBox.appendChild(label);
-    }
-}
-
-// 敌人表单：战利品物品勾选组
-function renderEnemyRewards(selectedItems) {
-    const box = $('enemy-rewards');
-    box.innerHTML = '';
-    for (const iid of sortedKeys(DATA.items)) {
-        const label = document.createElement('label');
-        label.innerHTML =
-            `<input type="checkbox" class="reward-cb" data-id="${iid}"` +
-            `${selectedItems.includes(iid) ? ' checked' : ''}>` +
-            `<span></span><span class="li-sub">${iid}</span>`;
-        label.querySelector('span').textContent = DATA.items[iid].name || iid;
-        box.appendChild(label);
     }
 }
 
@@ -501,20 +432,18 @@ async function deleteScene() {
 
 // ---------- 物品：保存 / 删除 ----------
 async function saveItem() {
-    const isWeapon = $('item-is-weapon').checked;
-    const isUsable = $('item-usable').checked;
-    const isCurrency = $('item-currency').checked;
     const payload = {
         id: $('item-id').value.trim(),
         name: $('item-name').value,
         description: $('item-desc').value,
-        is_weapon: isWeapon,
-        usable: isUsable,
-        is_currency: isCurrency,
+        tags: appliedItemTags(),
     };
-    if (isWeapon) payload.damage = parseInt($('item-damage').value, 10);
-    if (isUsable) payload.heal = parseInt($('item-heal').value, 10);
-    if (isCurrency) payload.currency_value = parseInt($('item-currency-value').value, 10);
+    // 勾上的标签，其字段组里每个字段都按 key 平铺进 payload（后端按标签规格归一）
+    for (const tid of payload.tags) {
+        for (const f of fieldSpecs(tid)) {
+            payload[f.key] = readFieldInput(tid, f);
+        }
+    }
 
     const res = await fetch('/api/editor/item', {
         method: 'POST',
@@ -535,6 +464,254 @@ async function deleteItem() {
     if (!it) return;
     if (!confirm(`确认删除物品【${it.name || selectedId}】？该操作不可撤销（可在 items.json.bak 找回）。`)) return;
     const res = await fetch('/api/editor/item/' + encodeURIComponent(selectedId), { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) { toast(data.message, 'error'); return; }
+    showEmpty();
+    await loadData();
+    toast(data.message, 'success');
+}
+
+// ---------- 标签：字段组展开（物品按标签动态长字段） ----------
+const TAG_TARGET_LABELS = { item: '物品', scene: '地点', character: '角色' };
+const TAG_FIELD_TYPES = [
+    { v: 'int', label: '整数' },
+    { v: 'text', label: '单行文本' },
+    { v: 'textarea', label: '多行文本' },
+    { v: 'text_list', label: '文本列表（逗号分隔）' },
+    { v: 'item_list', label: '物品多选' },
+];
+
+function targetTags(target) {
+    return sortedKeys(DATA.tags || {})
+        .filter(id => (DATA.tags[id].target || 'item') === target);
+}
+function fieldSpecs(tid) {
+    const spec = (DATA.tags || {})[tid];
+    return (spec && spec.fields) || [];
+}
+// 读取某标签勾选区里已勾选的标签 id
+function appliedTagsIn(hostId) {
+    return Array.from(document.querySelectorAll(`#${hostId} input[type=checkbox]`))
+        .filter(cb => cb.checked).map(cb => cb.dataset.tag);
+}
+function appliedItemTags() { return appliedTagsIn('item-tags'); }
+
+// 单个字段的输入控件（type 决定控件形态；item_list 为物品多选）
+function fieldInputEl(tid, f, value) {
+    const wrap = document.createElement('label');
+    wrap.className = 'ed-field';
+    const cap = document.createElement('span');
+    cap.textContent = f.label || f.key;
+    wrap.appendChild(cap);
+
+    if (f.type === 'item_list') {
+        const box = document.createElement('div');
+        box.className = 'ed-check-group';
+        box.dataset.field = f.key;
+        const selected = new Set(value || []);
+        for (const iid of sortedKeys(DATA.items)) {
+            const l = document.createElement('label');
+            l.className = 'ed-check';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = iid;
+            cb.checked = selected.has(iid);
+            const s = document.createElement('span');
+            s.textContent = DATA.items[iid].name || iid;
+            l.append(cb, s);
+            box.appendChild(l);
+        }
+        wrap.appendChild(box);
+        return wrap;
+    }
+
+    let el;
+    if (f.type === 'textarea') {
+        el = document.createElement('textarea');
+        el.rows = 3;
+    } else if (f.type === 'int') {
+        el = document.createElement('input');
+        el.type = 'number';
+        el.step = '1';
+        if (f.min != null) el.min = f.min;
+        if (f.max != null) el.max = f.max;
+    } else {
+        el = document.createElement('input');
+        el.type = 'text';
+        if (f.type === 'text_list') el.placeholder = '逗号分隔，例：bash,charge';
+    }
+    el.dataset.field = f.key;
+    const fallback = f.default != null ? f.default : (f.type === 'int' ? 0 : '');
+    el.value = value != null ? (Array.isArray(value) ? value.join(',') : value) : fallback;
+    wrap.appendChild(el);
+    return wrap;
+}
+
+// 读回某标签某字段的输入值（item_list 返回勾选的 id 数组）
+function readFieldInput(tid, f) {
+    const host = document.querySelector(`[data-tag-group="${tid}"]`);
+    if (!host) return undefined;
+    const el = host.querySelector(`[data-field="${f.key}"]`);
+    if (!el) return undefined;
+    if (f.type === 'item_list') {
+        return Array.from(el.querySelectorAll('input:checked')).map(c => c.value);
+    }
+    return el.value;
+}
+
+// 渲染某目标类型（item / character）的标签勾选区 + 各标签字段组。
+// applied 为已贴标签 id 数组，values 为字段取值来源对象（null = 新建，取默认值），
+// onToggle 为勾选变化后的回调（角色表单用它联动显示对话区 / Beat 区）。
+function renderTagFields(tagsHostId, fieldsHostId, target, applied, values,
+                         emptyHint, onToggle) {
+    const tagsBox = $(tagsHostId);
+    const fieldsBox = $(fieldsHostId);
+    tagsBox.innerHTML = '';
+    fieldsBox.innerHTML = '';
+    const appliedSet = new Set(applied || []);
+    const ids = targetTags(target);
+    if (!ids.length) {
+        const p = document.createElement('p');
+        p.className = 'ed-tip';
+        p.textContent = emptyHint;
+        tagsBox.appendChild(p);
+        return;
+    }
+    for (const tid of ids) {
+        const spec = DATA.tags[tid];
+        const cbWrap = document.createElement('label');
+        cbWrap.className = 'ed-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.dataset.tag = tid;
+        cb.checked = appliedSet.has(tid);
+        const sp = document.createElement('span');
+        sp.textContent = spec.label || tid;
+        cbWrap.append(cb, sp);
+        tagsBox.appendChild(cbWrap);
+
+        const group = document.createElement('div');
+        group.dataset.tagGroup = tid;
+        group.classList.toggle('hidden', !cb.checked);
+        const title = document.createElement('div');
+        title.className = 'ed-tip';
+        title.textContent = `标签【${spec.label || tid}】的字段组`;
+        group.appendChild(title);
+        for (const f of fieldSpecs(tid)) {
+            group.appendChild(fieldInputEl(tid, f, values && values[f.key]));
+        }
+        fieldsBox.appendChild(group);
+
+        cb.addEventListener('change', () => {
+            group.classList.toggle('hidden', !cb.checked);
+            // 首次勾上时把空字段填成默认值，省得用户自己填
+            if (cb.checked) {
+                for (const f of fieldSpecs(tid)) {
+                    const el = group.querySelector(`[data-field="${f.key}"]`);
+                    if (el && el.tagName === 'INPUT' && el.value === '' && f.default != null) {
+                        el.value = f.default;
+                    }
+                }
+            }
+            if (onToggle) onToggle();
+        });
+    }
+}
+
+// 物品表单的标签区（薄封装）
+function renderItemTagFields(item) {
+    renderTagFields('item-tags', 'item-tag-fields', 'item', (item && item.tags) || [],
+        item, '还没有可用于物品的标签，去「标签」页签新建一个。');
+}
+
+// ---------- 标签：标签页签表单（定义标签 = 目标类型 + 字段组） ----------
+function renderTagForm(spec) {
+    const isEdit = !!spec;
+    $('tag-form-title').textContent = isEdit ? '编辑标签' : '新建标签';
+    $('tag-id').value = isEdit ? (spec.id || '') : '';
+    $('tag-id').disabled = isEdit;
+    $('tag-label').value = isEdit ? (spec.label || '') : '';
+    $('tag-target').value = isEdit ? (spec.target || 'item') : 'item';
+    $('tag-runtime-flag').value = isEdit ? ((spec.runtime || {}).flag || '') : '';
+    $('tag-fields').innerHTML = '';
+    for (const f of (isEdit ? (spec.fields || []) : [])) addTagFieldRow(f);
+    $('tag-delete').classList.toggle('hidden', !isEdit);
+}
+
+function addTagFieldRow(field) {
+    const f = field || {};
+    const row = document.createElement('div');
+    row.className = 'ed-field-row';
+    row.dataset.tagField = '1';
+    row.innerHTML = `
+        <label class="ed-field"><span>key</span>
+            <input type="text" data-k="key" placeholder="damage"></label>
+        <label class="ed-field"><span>显示名</span>
+            <input type="text" data-k="label" placeholder="伤害值"></label>
+        <label class="ed-field"><span>类型</span>
+            <select data-k="type">${TAG_FIELD_TYPES
+                .map(t => `<option value="${t.v}">${t.label}</option>`).join('')}</select></label>
+        <label class="ed-field"><span>默认值</span>
+            <input type="text" data-k="default"></label>
+        <label class="ed-field"><span>最小值</span>
+            <input type="number" data-k="min" step="1"></label>
+        <label class="ed-field"><span>最大值</span>
+            <input type="number" data-k="max" step="1"></label>
+        <button type="button" class="ed-btn mini" data-k="remove">删除</button>`;
+    row.querySelector('[data-k="key"]').value = f.key || '';
+    row.querySelector('[data-k="label"]').value = f.label || '';
+    row.querySelector('[data-k="type"]').value = f.type || 'int';
+    row.querySelector('[data-k="default"]').value = f.default != null ? f.default : '';
+    row.querySelector('[data-k="min"]').value = f.min != null ? f.min : '';
+    row.querySelector('[data-k="max"]').value = f.max != null ? f.max : '';
+    row.querySelector('[data-k="remove"]').addEventListener('click', () => row.remove());
+    $('tag-fields').appendChild(row);
+}
+
+function collectTagPayload() {
+    const payload = {
+        id: $('tag-id').value.trim(),
+        label: $('tag-label').value,
+        target: $('tag-target').value,
+        fields: [],
+    };
+    const flag = $('tag-runtime-flag').value.trim();
+    if (flag) payload.runtime = { flag };
+    document.querySelectorAll('#tag-fields [data-tag-field]').forEach(row => {
+        const v = (k) => {
+            const el = row.querySelector(`[data-k="${k}"]`);
+            return el ? el.value.trim() : '';
+        };
+        const key = v('key');
+        if (!key) return;
+        const field = { key, label: v('label'), type: v('type') };
+        if (v('default') !== '') field.default = v('default');
+        if (v('min') !== '') field.min = parseInt(v('min'), 10);
+        if (v('max') !== '') field.max = parseInt(v('max'), 10);
+        payload.fields.push(field);
+    });
+    return payload;
+}
+
+async function saveTag() {
+    const res = await fetch('/api/editor/tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(collectTagPayload()),
+    });
+    const data = await res.json();
+    if (!data.success) { toast(data.message, 'error'); return; }
+    selectedId = data.id;
+    isNew = false;
+    await loadData();
+    toast(data.message, 'success');
+}
+
+async function deleteTag() {
+    const spec = DATA.tags[selectedId];
+    if (!spec) return;
+    if (!confirm(`确认删除标签【${spec.label || selectedId}】？该操作不可撤销（可在 tags.json.bak 找回）。`)) return;
+    const res = await fetch('/api/editor/tag/' + encodeURIComponent(selectedId), { method: 'DELETE' });
     const data = await res.json();
     if (!data.success) { toast(data.message, 'error'); return; }
     showEmpty();
@@ -589,26 +766,35 @@ function collectEnemyBeatPayload() {
     return payload;
 }
 
-async function saveEnemy() {
-    let beatFields;
+// ---------- 角色：保存 / 删除 ----------
+// 角色 payload = 基础字段 + 已贴标签的字段组（按 key 平铺）+ 对话树 / Beat 配置（按标签取舍）
+function collectCharacterPayload() {
+    const tags = appliedTagsIn('character-tags');
+    const payload = {
+        id: $('character-id').value.trim(),
+        name: $('character-name').value,
+        description: $('character-desc').value,
+        tags,
+    };
+    for (const tid of tags) {
+        for (const f of fieldSpecs(tid)) {
+            payload[f.key] = readFieldInput(tid, f);
+        }
+    }
+    if (tags.includes('talkable')) Object.assign(payload, collectDialoguePayload());
+    if (tags.includes('enemy')) Object.assign(payload, collectEnemyBeatPayload());
+    return payload;
+}
+
+async function saveCharacter() {
+    let payload;
     try {
-        beatFields = collectEnemyBeatPayload();
+        payload = collectCharacterPayload();
     } catch (e) {
         toast(e.message, 'error');
         return;
     }
-    const payload = {
-        id: $('enemy-id').value.trim(),
-        name: $('enemy-name').value,
-        description: $('enemy-desc').value,
-        hp: parseInt($('enemy-hp').value, 10),
-        attack: parseInt($('enemy-attack').value, 10),
-        defense: parseInt($('enemy-defense').value, 10),
-        reward_gold: parseInt($('enemy-gold').value, 10),
-        reward_items: [...document.querySelectorAll('.reward-cb:checked')].map(cb => cb.dataset.id),
-        ...beatFields,
-    };
-    const res = await fetch('/api/editor/enemy', {
+    const res = await fetch('/api/editor/character', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -618,14 +804,15 @@ async function saveEnemy() {
     selectedId = data.id;
     isNew = false;
     await loadData();
-    toast(data.message, 'success');
+    toast([data.message, ...(data.warnings || [])].join('\n'),
+        (data.warnings || []).length ? 'warning' : 'success');
 }
 
-async function deleteEnemy() {
-    const em = DATA.enemies[selectedId];
-    if (!em) return;
-    if (!confirm(`确认删除敌人【${em.name || selectedId}】？该操作不可撤销（可在 enemies.json.bak 找回）。`)) return;
-    const res = await fetch('/api/editor/enemy/' + encodeURIComponent(selectedId), { method: 'DELETE' });
+async function deleteCharacter() {
+    const ch = DATA.characters[selectedId];
+    if (!ch) return;
+    if (!confirm(`确认删除角色【${ch.name || selectedId}】？该操作不可撤销（可在 characters.json.bak 找回）。`)) return;
+    const res = await fetch('/api/editor/character/' + encodeURIComponent(selectedId), { method: 'DELETE' });
     const data = await res.json();
     if (!data.success) { toast(data.message, 'error'); return; }
     showEmpty();
@@ -634,44 +821,44 @@ async function deleteEnemy() {
 }
 
 // ---------- NPC：属性 / 条件问候 / 对话节点树编辑（列表式） ----------
-const COND_OPTIONS = [
-    { v: '', label: '无条件' },
-    { v: 'flag', label: '需要标志' },
-    { v: 'has_item', label: '持有物品' },
-    { v: 'enemy_killed', label: '已击败敌人' },
-    { v: 'gold_gte', label: '金币不少于' },
-];
-const EFFECT_OPTIONS = [
-    { v: '', label: '（无效果）' },
-    { v: 'set_flag', label: '设置标志' },
-    { v: 'give_item', label: '给予物品' },
-    { v: 'remove_item', label: '收回物品' },
-    { v: 'heal', label: '治疗生命' },
-    { v: 'max_hp', label: '增加生命上限' },
-    { v: 'gold', label: '增加金币' },
-    { v: 'teleport', label: '传送到' },
-    { v: 'start_combat', label: '开始战斗' },
-    { v: 'unlock', label: '解锁出口' },
-];
-// 各类型参数输入框的形态：list 为 datalist id，ph 为占位提示
-const COND_PARAM_CFG = {
-    flag: { list: '', type: 'text', ph: '标志名，如 quest_done' },
-    has_item: { list: 'npc-dl-items', type: 'text', ph: '物品 ID' },
-    enemy_killed: { list: 'npc-dl-enemies', type: 'text', ph: '敌人 ID' },
-    gold_gte: { list: '', type: 'number', ph: '金币数量' },
-};
-const EFFECT_PARAM_CFG = {
-    set_flag: { list: '', type: 'text', ph: '标志名，如 quest_done' },
-    give_item: { list: 'npc-dl-items', type: 'text', ph: '物品 ID' },
-    remove_item: { list: 'npc-dl-items', type: 'text', ph: '物品 ID' },
-    heal: { list: '', type: 'number', ph: '回血量' },
-    max_hp: { list: '', type: 'number', ph: '增加的上限值' },
-    gold: { list: '', type: 'number', ph: '金币数量' },
-    teleport: { list: 'npc-dl-scenes', type: 'text', ph: '地点 ID' },
-    start_combat: { list: 'npc-dl-enemies', type: 'text', ph: '敌人 ID' },
-};
-// 条件选项/参数配置共享给画布工作台的「入口设置」面板
-window.EditorShared = { COND_OPTIONS, COND_PARAM_CFG };
+// 条件/效果/触发器的可选条目全部来自事件字典（DATA.events），
+// 由 rebuildDictOptions() 在数据加载后填充 —— 字典里加条目，编辑器选项自动出现。
+let COND_OPTIONS = [];
+let EFFECT_OPTIONS = [];
+let COND_PARAM_CFG = {};
+// 引用型参数默认挂到这些 datalist 上（画布「入口设置」面板也用同一套配置）
+const REF_DATALIST = { item: 'npc-dl-items', scene: 'npc-dl-scenes', enemy: 'npc-dl-enemies' };
+
+function dictSection(name) { return (DATA.events && DATA.events[name]) || []; }
+function dictEntry(name, key) { return dictSection(name).find(e => e.key === key) || null; }
+function dictParams(entry) { return (entry && entry.params) || []; }
+
+/** 字典参数 → 单值控件配置（{list,type,ph}，供 configureParamInput 使用） */
+function paramCfg(p) {
+    if (!p) return null;
+    if (p.type === 'ref') {
+        return { list: REF_DATALIST[p.ref] || '', type: 'text', ph: (p.label || '') + ' ID' };
+    }
+    if (p.type === 'int') {
+        return { list: '', type: 'number', ph: p.placeholder || p.label || '数值' };
+    }
+    return { list: '', type: 'text', ph: p.placeholder || p.label || '' };
+}
+
+function rebuildDictOptions() {
+    COND_OPTIONS = [{ v: '', label: '无条件' }].concat(
+        dictSection('conditions').map(e => ({ v: e.key, label: e.label || e.key })));
+    EFFECT_OPTIONS = [{ v: '', label: '（无效果）' }].concat(
+        dictSection('effects').map(e => ({ v: e.key, label: e.label || e.key })));
+    COND_PARAM_CFG = {};
+    dictSection('conditions').forEach(e => {
+        COND_PARAM_CFG[e.key] = paramCfg(dictParams(e)[0]);
+    });
+    // 引用型条件参数靠 datalist 列候选，这里先灌满（事件页签不一定进过角色表单）
+    fillRefDatalists();
+    // 条件选项/参数配置共享给画布工作台的「入口设置」面板
+    window.EditorShared = { COND_OPTIONS, COND_PARAM_CFG, condTypeOf, buildCond };
+}
 
 function ce(tag, cls, text) {
     const x = document.createElement(tag);
@@ -688,7 +875,8 @@ function optionsHtml(list, selected) {
 
 function condTypeOf(cond) {
     if (!cond) return '';
-    return ['flag', 'has_item', 'enemy_killed', 'gold_gte'].find(k => k in cond) || '';
+    const e = dictSection('conditions').find(x => x.key in cond);
+    return e ? e.key : '';
 }
 
 function escAttr(s) {
@@ -761,35 +949,56 @@ function refreshNodeDatalist() {
     });
 }
 
-function renderNpcForm(npc) {
-    $('npc-form-title').textContent = npc ? '编辑 NPC' : '新建 NPC';
-    $('npc-id').value = npc ? npc.id : '';
-    $('npc-id').disabled = !!npc;
-    $('npc-name').value = npc ? npc.name : '';
-
+// 角色的对话编辑区（贴 talkable 时可见；ch 为 null 表示新建）
+function renderDialogueFields(ch) {
     const sceneSel = $('npc-scene');
     sceneSel.innerHTML = '';
     for (const sid of sortedKeys(DATA.scenes)) {
         sceneSel.appendChild(ce('option', null, `${DATA.scenes[sid].name || sid}（${sid}）`)).value = sid;
     }
-    sceneSel.value = npc ? (npc.scene_id || '') : (sortedKeys(DATA.scenes)[0] || '');
-    $('npc-greeting').value = npc ? (npc.greeting || 'greet') : 'greet';
+    sceneSel.value = ch ? (ch.scene_id || '') : (sortedKeys(DATA.scenes)[0] || '');
+    $('npc-greeting').value = ch ? (ch.greeting || 'greet') : 'greet';
 
     fillRefDatalists();
 
     const rulesBox = $('npc-rules');
     rulesBox.innerHTML = '';
-    (npc && npc.greeting_rules || []).forEach(r => addRuleRow(r));
+    (ch && ch.greeting_rules || []).forEach(r => addRuleRow(r));
 
     const nodesBox = $('npc-nodes');
     nodesBox.innerHTML = '';
-    if (npc) {
-        Object.entries(npc.nodes || {}).forEach(([nid, node]) => addNodeCard(nid, node));
+    if (ch && Object.keys(ch.nodes || {}).length) {
+        Object.entries(ch.nodes).forEach(([nid, node]) => addNodeCard(nid, node));
     } else {
         addNodeCard('greet', { text: '', choices: [] });
     }
     refreshNodeDatalist();
-    $('npc-delete').classList.toggle('hidden', !npc);
+}
+
+// 角色表单整体渲染（基础字段 + 标签字段组 + 对话区 + Beat 区）
+function renderCharacterForm(ch) {
+    $('character-form-title').textContent = ch ? '编辑角色' : '新建角色';
+    $('character-id').value = ch ? ch.id : '';
+    $('character-id').disabled = !!ch;
+    $('character-name').value = ch ? (ch.name || '') : '';
+    $('character-desc').value = ch ? (ch.description || '') : '';
+
+    renderTagFields('character-tags', 'character-tag-fields', 'character',
+        (ch && ch.tags) || [], ch,
+        '还没有可用于角色的标签，去「标签」页签新建（例如 enemy / talkable）。',
+        syncCharacterBlocks);
+
+    renderDialogueFields(ch);
+    resetEnemyBeatFields(ch && (ch.tags || []).includes('enemy') ? ch : null);
+    syncCharacterBlocks();
+    $('character-delete').classList.toggle('hidden', !ch);
+}
+
+// 勾/摘 enemy、talkable 标签时联动显示 Beat 配置区 / 对话编辑区
+function syncCharacterBlocks() {
+    const applied = new Set(appliedTagsIn('character-tags'));
+    $('character-dialogue-box').classList.toggle('hidden', !applied.has('talkable'));
+    $('character-beat-box').classList.toggle('hidden', !applied.has('enemy'));
 }
 
 function addRuleRow(rule) {
@@ -916,64 +1125,108 @@ function refOptionsHtml(coll, selected, withEmpty, emptyLabel) {
     return html;
 }
 
-function renderEffectParams(typeSel, paramsBox, eff) {
-    /**按效果类型渲染参数区：unlock 为「地点+出口」两个联动下拉，其余为单值输入 */
-    const t = typeSel.value;
-    paramsBox.innerHTML = '';
-    if (!t) return;
-
-    if (t === 'unlock') {
-        const sceneSel = ce('select', 'ne-scene');
-        sceneSel.innerHTML = refOptionsHtml(DATA.scenes, eff.scene, false);
-        const exitSel = ce('select', 'ne-exit');
-        const rebuildExits = (preselect) => {
-            const sc = DATA.scenes[sceneSel.value];
-            exitSel.innerHTML = (sc ? (sc.exits || []) : [])
-                .map(x => `<option value="${x}"${x === preselect ? ' selected' : ''}>${
-                    (DATA.scenes[x] || {}).name || x}</option>`).join('');
-        };
-        sceneSel.addEventListener('change', () => rebuildExits(null));
-        paramsBox.append(sceneSel, exitSel);
-        rebuildExits(eff.exit || null);
-        return;
+/** 引用型参数字典项 → 候选项 HTML（item/scene/enemy/npc 直查；node/exit 依 parent 联动） */
+function refOptionsForParam(p, parentValue, selected, withEmpty) {
+    if (p.ref === 'node') {
+        const nodes = (DATA.npcs[parentValue] || {}).nodes || {};
+        return nodeOptionsHtml(nodes, selected, withEmpty);
     }
+    if (p.ref === 'exit') {
+        const sc = DATA.scenes[parentValue];
+        let html = withEmpty ? '<option value=""></option>' : '';
+        for (const x of (sc ? (sc.exits || []) : [])) {
+            html += `<option value="${escAttr(x)}"${x === selected ? ' selected' : ''}>${
+                escAttr((DATA.scenes[x] || {}).name || x)}</option>`;
+        }
+        return html;
+    }
+    const coll = { item: DATA.items, scene: DATA.scenes, enemy: DATA.enemies, npc: DATA.npcs }[p.ref];
+    return refOptionsHtml(coll, selected, withEmpty, '（不限）');
+}
 
-    let param = ce('input', 'ne-param');
-    param = configureParamInput(param, EFFECT_PARAM_CFG[t]);
-    param.value = eff ? (eff.item || eff.flag || eff.scene || eff.enemy ||
-        (eff.amount != null ? eff.amount : '')) : '';
-    paramsBox.appendChild(param);
+/** 按字典参数项造一个控件（select/input），带 data-field 供收集；cls 为控件类名 */
+function makeParamControl(p, values, cls) {
+    const val = values[p.field];
+    const cur = val == null ? '' : String(val);
+    if (p.type === 'ref') {
+        const sel = ce('select', cls);
+        sel.dataset.field = p.field;
+        const parentVal = p.parent ? (values[p.parent] || '') : '';
+        sel.innerHTML = refOptionsForParam(p, parentVal, cur, !p.required);
+        sel.value = cur;
+        return sel;
+    }
+    const inp = ce('input', cls);
+    inp.dataset.field = p.field;
+    inp.type = p.type === 'int' ? 'number' : 'text';
+    if (p.min != null) inp.min = p.min;
+    if (p.max != null) inp.max = p.max;
+    inp.placeholder = p.placeholder || p.label || '';
+    inp.value = cur;
+    return inp;
+}
+
+/**
+ * 按字典 params 渲染一组参数控件（通用，不再特判 unlock）：
+ * 参数项 type=ref 出下拉，int 出数字框，text 出文本框；
+ * 带 parent 的参数在父参数变化时用新父值重建（如 unlock 的出口跟地点走）。
+ */
+function renderParamGroup(box, params, values, cls) {
+    const build = () => {
+        box.innerHTML = '';
+        params.forEach(p => box.appendChild(makeParamControl(p, values, cls)));
+        params.forEach(p => {
+            const ctl = box.querySelector(`[data-field="${p.field}"]`);
+            if (!ctl) return;
+            ctl.addEventListener('change', () => {
+                values[p.field] = ctl.value;
+                const children = params.filter(q => q.parent === p.field);
+                if (children.length) {
+                    children.forEach(q => { values[q.field] = ''; });  // 父值变了，子候选失效
+                    build();
+                }
+            });
+        });
+    };
+    build();
+}
+
+/** 读回一组参数控件 → 参数字典（int 转数字；空值不写，交后端必填校验报错） */
+function readParamGroup(box, params) {
+    const out = {};
+    params.forEach(p => {
+        const ctl = box.querySelector(`[data-field="${p.field}"]`);
+        if (!ctl) return;
+        const raw = (ctl.value || '').trim();
+        if (raw === '') return;
+        out[p.field] = p.type === 'int' ? parseInt(raw, 10) : raw;
+    });
+    return out;
+}
+
+function renderEffectParams(typeSel, paramsBox, eff) {
+    paramsBox.innerHTML = '';
+    const entry = dictEntry('effects', typeSel.value);
+    if (!entry) return;
+    renderParamGroup(paramsBox, dictParams(entry), Object.assign({}, eff || {}), 'ne-param');
 }
 
 function collectEffectFromRow(row) {
     const t = row.querySelector('.ne-type').value;
     if (!t) return null;
-    if (t === 'unlock') {
-        return {
-            type: 'unlock',
-            scene: row.querySelector('.ne-scene').value,
-            exit: row.querySelector('.ne-exit').value,
-        };
-    }
-    const raw = row.querySelector('.ne-param').value.trim();
-    return buildEffect(t, raw);
+    const entry = dictEntry('effects', t);
+    if (!entry) return { type: t };
+    return Object.assign({ type: t },
+        readParamGroup(row.querySelector('.ne-params'), dictParams(entry)));
 }
 
 function buildCond(t, raw) {
-    if (t === 'gold_gte') return { gold_gte: parseInt(raw, 10) };
-    return { [t]: raw };
+    const p = dictParams(dictEntry('conditions', t))[0];
+    return { [t]: (p && p.type === 'int') ? parseInt(raw, 10) : raw };
 }
 
-function buildEffect(t, raw) {
-    if (['heal', 'max_hp', 'gold'].includes(t)) return { type: t, amount: parseInt(raw, 10) };
-    if (t === 'set_flag') return { type: t, flag: raw };
-    if (t === 'give_item' || t === 'remove_item') return { type: t, item: raw };
-    if (t === 'teleport') return { type: t, scene: raw };
-    if (t === 'start_combat') return { type: t, enemy: raw };
-    return { type: t };
-}
-
-function collectNpcPayload() {
+// 对话树部分（贴 talkable 时并入角色 payload；id/name 由角色基础字段提供）
+function collectDialoguePayload() {
     const greeting_rules = [];
     document.querySelectorAll('#npc-rules .npc-rule-row').forEach(row => {
         const node = row.querySelector('.nr-node').value.trim();
@@ -1009,8 +1262,6 @@ function collectNpcPayload() {
     });
 
     return {
-        id: $('npc-id').value.trim(),
-        name: $('npc-name').value,
         scene_id: $('npc-scene').value,
         greeting: $('npc-greeting').value.trim() || 'greet',
         greeting_rules,
@@ -1018,63 +1269,11 @@ function collectNpcPayload() {
     };
 }
 
-async function saveNpc() {
-    const payload = collectNpcPayload();
-    const res = await fetch('/api/editor/npc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!data.success) { toast(data.message, 'error'); return; }
-    selectedId = data.id;
-    isNew = false;
-    await loadData();
-    toast([data.message, ...(data.warnings || [])].join('\n'),
-        (data.warnings || []).length ? 'warning' : 'success');
-}
-
-async function deleteNpc() {
-    const npc = DATA.npcs[selectedId];
-    if (!npc) return;
-    if (!confirm(`确认删除 NPC【${npc.name || selectedId}】？该操作不可撤销（可在 npc_dialogues.json.bak 找回）。`)) return;
-    const res = await fetch('/api/editor/npc/' + encodeURIComponent(selectedId), { method: 'DELETE' });
-    const data = await res.json();
-    if (!data.success) { toast(data.message, 'error'); return; }
-    showEmpty();
-    await loadData();
-    toast(data.message, 'success');
-}
-
 // ---------- 事件规则编辑 ----------
-const TRIGGER_OPTIONS = [
-    { v: 'ITEM_TAKEN', label: '拾取物品时' },
-    { v: 'ITEM_USED', label: '使用物品时' },
-    { v: 'ITEM_BOUGHT', label: '购买物品时' },
-    { v: 'ENEMY_KILLED', label: '击败敌人时' },
-    { v: 'SCENE_ENTER', label: '进入地点时' },
-    { v: 'SCENE_LEAVE', label: '离开地点时' },
-    { v: 'NPC_TALK', label: '对话到达节点时' },
-];
-// 触发器 → 事件参数行：field 是后端 kwargs 名，coll 是引用集合类型，optional 可留空
-const TRIGGER_ARG_SPECS = {
-    ITEM_TAKEN: [
-        { field: 'item_id', coll: 'items', label: '物品', optional: false },
-        { field: 'from_scene', coll: 'scenes', label: '地点', optional: true },
-    ],
-    ITEM_USED: [{ field: 'item_id', coll: 'items', label: '物品', optional: false }],
-    ITEM_BOUGHT: [
-        { field: 'item_id', coll: 'items', label: '物品', optional: false },
-        { field: 'from_scene', coll: 'scenes', label: '地点', optional: true },
-    ],
-    ENEMY_KILLED: [{ field: 'enemy_id', coll: 'enemies', label: '敌人', optional: false }],
-    SCENE_ENTER: [{ field: 'scene_id', coll: 'scenes', label: '地点', optional: false }],
-    SCENE_LEAVE: [{ field: 'scene_id', coll: 'scenes', label: '地点', optional: false }],
-    NPC_TALK: [
-        { field: 'npc_id', coll: 'npcs', label: 'NPC', optional: false },
-        { field: 'node_id', coll: 'nodes', label: '对话节点', optional: true },
-    ],
-};
+// 触发器条目全部来自事件字典（events.json）：字典里登记了什么，编辑器就能选什么
+function triggerOptions() {
+    return dictSection('triggers').map(e => ({ v: e.key, label: e.label || e.key }));
+}
 
 function renderEventForm(rule) {
     $('event-form-title').textContent = rule ? '编辑事件规则' : '新建事件规则';
@@ -1082,7 +1281,8 @@ function renderEventForm(rule) {
     $('event-id').disabled = !!rule;
     $('event-label').value = rule ? (rule.label || '') : '';
     const onSel = $('event-on');
-    onSel.innerHTML = optionsHtml(TRIGGER_OPTIONS, rule ? rule.on : 'ITEM_TAKEN');
+    const opts = triggerOptions();
+    onSel.innerHTML = optionsHtml(opts, rule ? rule.on : (opts[0] ? opts[0].v : ''));
     renderEventArgs(onSel.value, rule ? (rule.if || {}) : {});
     renderEventWhen(rule ? rule.when : null);
     const box = $('event-effects');
@@ -1092,36 +1292,34 @@ function renderEventForm(rule) {
     $('event-delete').classList.toggle('hidden', !rule);
 }
 
+/** 触发参数行按字典 params 渲染（.ev-arg + data-field 供 collectEventPayload 收集） */
 function renderEventArgs(on, values) {
     const box = $('event-args');
-    box.innerHTML = '';
-    (TRIGGER_ARG_SPECS[on] || []).forEach(spec => {
-        const row = ce('label', 'event-arg-row');
-        row.append(`${spec.label}${spec.optional ? '（可空）' : ''}`);
-        const sel = ce('select', 'ev-arg');
-        sel.dataset.field = spec.coll === 'nodes' ? 'node_id' : spec.field;
-        sel.dataset.coll = spec.coll;
-        const fill = (preselect) => {
-            if (spec.coll === 'nodes') {
-                const npcId = box.querySelector('.ev-arg[data-field="npc_id"]')?.value;
-                const nodes = (DATA.npcs[npcId] || {}).nodes || {};
-                sel.innerHTML = nodeOptionsHtml(nodes, preselect, spec.optional);
-            } else {
-                sel.innerHTML = refOptionsHtml(DATA[spec.coll], preselect, spec.optional, '任意地点');
-            }
-        };
-        fill(values[spec.field] || null);
-        row.appendChild(sel);
-        box.appendChild(row);
-    });
-    // NPC_TALK：NPC 切换时重建节点下拉（事件委托一次）
-    box.onchange = (e) => {
-        if (e.target.dataset && e.target.dataset.field === 'npc_id') {
-            const nodeSel = box.querySelector('.ev-arg[data-field="node_id"]');
-            if (nodeSel) nodeSel.innerHTML =
-                nodeOptionsHtml((DATA.npcs[e.target.value] || {}).nodes || {}, null, true);
-        }
+    box.onchange = null;
+    const params = dictParams(dictEntry('triggers', on));
+    const vals = Object.assign({}, values || {});
+    const build = () => {
+        box.innerHTML = '';
+        params.forEach(p => {
+            const row = ce('label', 'event-arg-row');
+            row.append(`${p.label || p.field}${p.required ? '' : '（可空）'}`);
+            row.appendChild(makeParamControl(p, vals, 'ev-arg'));
+            box.appendChild(row);
+        });
+        params.forEach(p => {
+            const ctl = box.querySelector(`.ev-arg[data-field="${p.field}"]`);
+            if (!ctl) return;
+            ctl.addEventListener('change', () => {
+                vals[p.field] = ctl.value;
+                const children = params.filter(q => q.parent === p.field);
+                if (children.length) {
+                    children.forEach(q => { vals[q.field] = ''; });
+                    build();
+                }
+            });
+        });
     };
+    build();
 }
 
 function nodeOptionsHtml(nodes, selected, withEmpty) {

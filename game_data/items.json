@@ -3,15 +3,21 @@
     "id": "iron_sword",
     "name": "铁剑",
     "description": "一把普通的铁剑，剑身磨得很亮。",
-    "is_weapon": true,
-    "damage": 10
+    "tags": [
+      "weapon"
+    ],
+    "damage": 10,
+    "is_weapon": true
   },
   "healing_potion": {
     "id": "healing_potion",
     "name": "治疗药水",
     "description": "喝下可恢复 30 点生命值。",
-    "usable": true,
-    "heal": 30
+    "tags": [
+      "consumable"
+    ],
+    "heal": 30,
+    "usable": true
   },
   "rusty_key": {
     "id": "rusty_key",
@@ -22,6 +28,9 @@
     "id": "gold_coin",
     "name": "金币",
     "description": "一枚刻着古老纹章的金币，在洞穴石台上等着它的主人。",
+    "tags": [
+      "currency"
+    ],
     "currency_value": 1
   },
   "guardian_core": {

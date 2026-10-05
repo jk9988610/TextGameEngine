@@ -1,6 +1,9 @@
 """
 编辑器数据管理层（引擎配套工具模块）
-负责：对 scenes / items 两类游戏数据做校验、引用完整性检查、原子写盘与自动备份。
+负责：对 scenes / items / tags / characters / events 游戏数据做校验、引用完整性检查、原子写盘与自动备份。
+
+其中 events.json 是**只读**的事件字典（触发器/条件/效果的词汇表），
+由用户手写或引擎自带示例；本模块只读取它来驱动清洗与校验，不写入。
 
 设计原则：
   1. 只产出/修改 JSON 数据文件，绝不改引擎代码；
@@ -19,6 +22,9 @@ from typing import Dict, Any, List, Tuple, Optional, Set
 
 # Beat 战斗意图名集合（敌人 brain/征兆/意图文案的合法动作键以此为校验依据）
 from .beat_combat import INTENT_TEXT
+# 事件字典（触发器/条件/效果词汇表）与引擎原子契约
+from . import event_dictionary
+from .effects import CONDITION_ATOMS, EFFECT_ATOM_FIELDS
 
 ID_PATTERN = re.compile(r'^[a-z0-9_]{1,32}$')
 NAME_MAX = 40
@@ -26,17 +32,16 @@ DESC_MAX = 2000
 TITLE_MAX = 40
 INTRO_MAX = 200
 
-# 事件规则触发器规格：on → {事件参数字段: 引用类型}
-# 引用类型：item/enemy/scene/nc 为必填，带 ? 为可选
-TRIGGER_SPECS: Dict[str, Dict[str, str]] = {
-    "ITEM_TAKEN": {"item_id": "item", "from_scene": "scene?"},
-    "ITEM_USED": {"item_id": "item"},
-    "ITEM_BOUGHT": {"item_id": "item", "from_scene": "scene?"},
-    "ENEMY_KILLED": {"enemy_id": "enemy"},
-    "SCENE_ENTER": {"scene_id": "scene"},
-    "SCENE_LEAVE": {"scene_id": "scene"},
-    "NPC_TALK": {"npc_id": "npc", "node_id": "node?"},
-}
+# 标签（tags.json）规格：标签 = 目标类型 + 一组字段组
+#   target  —— 标签能贴到哪类对象上（item 物品 / scene 地点 / character 角色）
+#   fields  —— 贴了该标签后编辑器展示、校验并持久化的字段
+#   runtime —— 可选：兼容运行时读取的派生键（flag 为真值键名）
+TAG_TARGETS = ("item", "scene", "character")
+FIELD_TYPES = ("int", "text", "textarea", "text_list", "item_list")
+FIELD_KEY_PATTERN = re.compile(r'^[a-z0-9_]{1,32}$')
+
+# 事件系统的可用触发器 / 条件 / 效果清单来自 events.json（事件字典），
+# 本模块只按字典里的 params 规格做通用清洗与校验，不再硬编码任何条目。
 
 
 class ValidationError(Exception):
@@ -51,8 +56,9 @@ class EditorManager:
         self._file_map = {
             "scenes": "scenes.json",
             "items": "items.json",
-            "enemies": "enemies.json",
-            "npcs": "npc_dialogues.json",
+            "tags": "tags.json",
+            "characters": "characters.json",
+            "events": "events.json",          # 事件字典（只读词汇表）
             "config": "game_config.json",
             "layouts": "npc_layouts.json",   # 画布手动布局坐标（非游戏内容）
             "scene_layouts": "scene_layouts.json",  # 场景地图画布坐标（非游戏内容）
@@ -121,11 +127,12 @@ class EditorManager:
     # ---------- 物品 upsert ----------
     def upsert_item(self, scenes: Dict[str, Any], items: Dict[str, Any],
                     enemies: Dict[str, Any], config: Dict[str, Any],
+                    tags: Dict[str, Any],
                     payload: Dict[str, Any]) -> Dict[str, Any]:
         """新建或更新一个物品"""
         with self._lock:
-            cleaned, is_new, iid = self._clean_item(payload, items)
-            errors = self._validate_item(cleaned, items, is_new)
+            cleaned, is_new, iid = self._clean_item(payload, items, tags)
+            errors = self._validate_item(cleaned, items, tags, is_new)
             if errors:
                 return {"success": False, "message": "；".join(errors)}
 
@@ -175,41 +182,153 @@ class EditorManager:
             self._write_json("items", items)
             return {"success": True, "message": f"物品【{name}】已删除"}
 
-    # ---------- 敌人 upsert ----------
-    def upsert_enemy(self, items: Dict[str, Any], enemies: Dict[str, Any],
-                     payload: Dict[str, Any]) -> Dict[str, Any]:
-        """新建或更新一个敌人"""
+    # ---------- 标签 upsert / delete ----------
+    def load_tags(self) -> Dict[str, Any]:
+        """读取全部标签定义（tags.json）；缺失/损坏按空处理。"""
+        try:
+            data = self.load("tags")
+            return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def upsert_tag(self, tags: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
+        """新建/更新一个标签（id/label/target/fields）。"""
         with self._lock:
-            cleaned, is_new, eid = self._clean_enemy(payload, enemies)
-            errors = self._validate_enemy(cleaned, items, is_new)
+            cleaned, is_new = self._clean_tag(payload, tags)
+            errors = self._validate_tag(cleaned, tags, is_new)
+            if errors:
+                return {"success": False, "message": "；".join(errors)}
+            tags[cleaned["id"]] = cleaned
+            self._write_json("tags", tags)
+            msg = f"标签【{cleaned['label']}】已{'新建' if is_new else '保存'}"
+            return {"success": True, "message": msg, "id": cleaned["id"]}
+
+    def delete_tag(self, tags: Dict[str, Any], items: Dict[str, Any],
+                   characters: Dict[str, Any],
+                   tag_id: str) -> Dict[str, Any]:
+        """删除一个标签（仍被物品或角色贴用时拒绝）。"""
+        with self._lock:
+            if tag_id not in tags:
+                return {"success": False, "message": f"标签不存在：{tag_id}"}
+            item_refs = [iid for iid, it in items.items()
+                         if tag_id in (it.get("tags") or [])]
+            char_refs = [cid for cid, c in characters.items()
+                         if tag_id in (c.get("tags") or [])]
+            if item_refs or char_refs:
+                parts = []
+                if item_refs:
+                    parts.append(f"{len(item_refs)} 个物品（{', '.join(sorted(item_refs))}）")
+                if char_refs:
+                    parts.append(f"{len(char_refs)} 个角色（{', '.join(sorted(char_refs))}）")
+                return {"success": False,
+                        "message": f"还有 {'、'.join(parts)} 贴用了这个标签，"
+                                   f"不能删除。请先摘掉。"}
+            label = tags[tag_id].get("label", tag_id)
+            del tags[tag_id]
+            self._write_json("tags", tags)
+            return {"success": True, "message": f"标签【{label}】已删除"}
+
+    def _clean_tag(self, payload: Dict[str, Any],
+                   tags: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
+        tid = str(payload.get("id", "")).strip()
+        target = str(payload.get("target", "item")).strip() or "item"
+        fields: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+        for raw in payload.get("fields") or []:
+            if not isinstance(raw, dict):
+                continue
+            key = str(raw.get("key", "")).strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            field: Dict[str, Any] = {
+                "key": key,
+                "label": str(raw.get("label", "")).strip() or key,
+                "type": str(raw.get("type", "text")).strip() or "text",
+            }
+            if "default" in raw and raw["default"] not in (None, ""):
+                field["default"] = raw["default"]
+            for k in ("min", "max"):
+                if raw.get(k) not in (None, ""):
+                    field[k] = self._to_int(raw.get(k), -1)
+            fields.append(field)
+        cleaned: Dict[str, Any] = {"id": tid, "label": str(payload.get("label", "")).strip(),
+                                   "target": target, "fields": fields}
+        rt_flag = str((payload.get("runtime") or {}).get("flag", "")).strip()
+        if rt_flag:
+            cleaned["runtime"] = {"flag": rt_flag}
+        return cleaned, tid not in tags
+
+    def _validate_tag(self, tag: Dict[str, Any], tags: Dict[str, Any],
+                      is_new: bool) -> List[str]:
+        errors: List[str] = []
+        tid = str(tag.get("id", "")).strip()
+        if not ID_PATTERN.match(tid):
+            errors.append("标签 ID 只能用小写字母/数字/下划线，长度 1~32（例：weapon）")
+        if not tag.get("label"):
+            errors.append("标签名称不能为空")
+        elif len(tag["label"]) > NAME_MAX:
+            errors.append(f"标签名称不能超过 {NAME_MAX} 个字")
+        if tag.get("target") not in TAG_TARGETS:
+            errors.append(f"标签目标类型只能是：{'/'.join(TAG_TARGETS)}")
+        for field in tag.get("fields", []):
+            key = field["key"]
+            if not FIELD_KEY_PATTERN.match(key):
+                errors.append(f"字段 key 非法：{key}（小写字母/数字/下划线）")
+            if field.get("type") not in FIELD_TYPES:
+                errors.append(f"字段【{key}】类型不支持：{field.get('type')}"
+                              f"（可用：{'/'.join(FIELD_TYPES)}）")
+            if field.get("type") == "int":
+                for k in ("min", "max"):
+                    if k in field and not isinstance(field[k], int):
+                        errors.append(f"字段【{key}】的 {k} 必须是整数")
+        return errors
+
+    # ---------- 角色 upsert / delete ----------
+    def upsert_character(self, characters: Dict[str, Any], scenes: Dict[str, Any],
+                         items: Dict[str, Any], tags: Dict[str, Any],
+                         payload: Dict[str, Any]) -> Dict[str, Any]:
+        """新建/更新一个角色（基础字段 + 标签字段组 + 可选对话树 / Beat 配置）。
+
+        角色是引擎唯一的"人物"概念：贴 enemy 标签即可战斗，贴 talkable 标签即可
+        对话，两个标签可以同时贴。字段由标签（tags.json）声明，引擎只认派生视图。
+        """
+        with self._lock:
+            cleaned, is_new, cid = self._clean_character(payload, characters, tags)
+            errors, warnings = self._validate_character(
+                cleaned, characters, scenes, items, tags)
             if errors:
                 return {"success": False, "message": "；".join(errors)}
 
-            enemies[eid] = cleaned
-            self._write_json("enemies", enemies)
-            msg = f"敌人【{cleaned['name']}】已{'新建' if is_new else '保存'}"
-            return {"success": True, "message": msg, "id": eid}
+            characters[cid] = cleaned
+            self._write_json("characters", characters)
+            msg = f"角色【{cleaned['name']}】已{'新建' if is_new else '保存'}"
+            return {"success": True, "message": msg, "warnings": warnings, "id": cid}
 
-    def delete_enemy(self, scenes: Dict[str, Any], enemies: Dict[str, Any],
-                     enemy_id: str,
-                     live_battle_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
-        """删除一个敌人（被场景放置 / 有玩家正在与之战斗时拒绝）"""
+    def delete_character(self, scenes: Dict[str, Any], characters: Dict[str, Any],
+                         character_id: str,
+                         live_battle_ids: Optional[Set[str]] = None,
+                         live_dialogue_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
+        """删除一个角色（被场景放置 / 有玩家正在与之战斗或对话时拒绝）"""
         with self._lock:
-            if enemy_id not in enemies:
-                return {"success": False, "message": f"敌人不存在：{enemy_id}"}
-            if enemy_id in (live_battle_ids or set()):
+            if character_id not in characters:
+                return {"success": False, "message": f"角色不存在：{character_id}"}
+            if character_id in (live_battle_ids or set()):
                 return {"success": False,
-                        "message": "当前有玩家正在与这个敌人战斗，不能删除"}
+                        "message": "当前有玩家正在与这个角色战斗，不能删除"}
+            if character_id in (live_dialogue_ids or set()):
+                return {"success": False,
+                        "message": "当前有玩家正在和这个角色对话，不能删除"}
             refs = [sid for sid, s in scenes.items()
-                    if enemy_id in s.get("enemies_here", [])]
+                    if character_id in s.get("enemies_here", [])]
             if refs:
                 return {"success": False,
-                        "message": f"被以下地点作为出没敌人使用中，不能删除："
+                        "message": f"被以下地点作为出没角色使用中，不能删除："
                                    f"{', '.join(sorted(refs))}。请先移除。"}
-            name = enemies[enemy_id].get("name", enemy_id)
-            del enemies[enemy_id]
-            self._write_json("enemies", enemies)
-            return {"success": True, "message": f"敌人【{name}】已删除"}
+            name = characters[character_id].get("name", character_id)
+            del characters[character_id]
+            self._write_json("characters", characters)
+            return {"success": True, "message": f"角色【{name}】已删除"}
 
     # ---------- 内部：场景清洗/校验 ----------
     def _clean_scene(self, payload: Dict[str, Any],
@@ -313,45 +432,59 @@ class EditorManager:
         return errors, warnings
 
     # ---------- 内部：物品清洗/校验 ----------
-    def _clean_item(self, payload: Dict[str, Any],
-                    items: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
+    def _clean_item(self, payload: Dict[str, Any], items: Dict[str, Any],
+                    tags: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
+        """物品 = 基础三字段 + 标签 + 各标签声明的字段（扁平存放，键即字段 key）。
+
+        字段值按 tags.json 的字段类型归一；标签自带的 runtime.flag 会派生成运行时
+        读取的布尔键（如 is_weapon / usable），让引擎核心暂时不必知道"标签"概念。
+        """
         iid = str(payload.get("id", "")).strip()
         is_new = iid not in items
-        is_weapon = bool(payload.get("is_weapon", False))
         cleaned: Dict[str, Any] = {
             "id": iid,
             "name": str(payload.get("name", "")).strip(),
             "description": str(payload.get("description", "")).strip(),
         }
-        if is_weapon:
-            raw_damage = payload.get("damage", 5)
-            try:
-                damage = int(raw_damage)
-            except (TypeError, ValueError):
-                damage = -1  # 交给校验报错
-            cleaned["is_weapon"] = True
-            cleaned["damage"] = damage
-
-        is_usable = bool(payload.get("usable", False))
-        if is_usable:
-            try:
-                heal = int(payload.get("heal", 0))
-            except (TypeError, ValueError):
-                heal = -1
-            cleaned["usable"] = True
-            cleaned["heal"] = heal
-
-        is_currency = bool(payload.get("is_currency", False))
-        if is_currency:
-            try:
-                currency_value = int(payload.get("currency_value", 1))
-            except (TypeError, ValueError):
-                currency_value = -1
-            cleaned["currency_value"] = currency_value
+        applied = self._dedupe_strs(payload.get("tags", []))
+        if applied:
+            cleaned["tags"] = applied
+        for tid in applied:
+            spec = tags.get(tid)
+            if not isinstance(spec, dict):
+                continue  # 未知标签交给校验报错
+            for field in spec.get("fields", []) or []:
+                key = str(field.get("key", "")).strip()
+                if not key:
+                    continue
+                cleaned[key] = self._coerce_field(
+                    field, payload.get(key, field.get("default")))
+            flag = (spec.get("runtime") or {}).get("flag")
+            if flag:
+                cleaned[str(flag)] = True
         return cleaned, is_new, iid
 
+    @staticmethod
+    def _coerce_field(field: Dict[str, Any], value: Any) -> Any:
+        """按字段类型归一字段值；解析不了的返回哨兵值交给校验报错。"""
+        ftype = field.get("type", "text")
+        if ftype == "int":
+            if value is None or value == "":
+                value = field.get("default", 0)
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return -1
+        if ftype in ("text", "textarea"):
+            return str(value if value is not None else "").strip()
+        if ftype in ("text_list", "item_list"):
+            if isinstance(value, str):
+                value = value.split(",")
+            return EditorManager._dedupe_strs(value)
+        return value
+
     def _validate_item(self, item: Dict[str, Any], items: Dict[str, Any],
-                       is_new: bool) -> List[str]:
+                       tags: Dict[str, Any], is_new: bool) -> List[str]:
         errors: List[str] = []
         if not ID_PATTERN.match(item["id"]):
             errors.append("物品 ID 只能用小写字母/数字/下划线，长度 1~32（例：healing_potion）")
@@ -363,47 +496,47 @@ class EditorManager:
             errors.append("描述不能为空")
         elif len(item["description"]) > DESC_MAX:
             errors.append(f"描述不能超过 {DESC_MAX} 个字")
-        if item.get("is_weapon"):
-            if not isinstance(item.get("damage"), int) or item["damage"] < 0:
-                errors.append("武器伤害必须是非负整数")
-        if item.get("usable"):
-            if not isinstance(item.get("heal"), int) or item["heal"] < 0:
-                errors.append("回复生命值必须是非负整数")
-        if "currency_value" in item:
-            if not isinstance(item["currency_value"], int) or item["currency_value"] <= 0:
-                errors.append("货币面值必须是正整数")
+
+        for tid in item.get("tags", []):
+            spec = tags.get(tid)
+            if not isinstance(spec, dict):
+                errors.append(f"标签不存在：{tid}（请先在标签页新建）")
+                continue
+            target = spec.get("target", "item")
+            if target != "item":
+                errors.append(f"标签【{spec.get('label') or tid}】只能贴在"
+                              f"{'地点' if target == 'scene' else '角色'}上，不能用于物品")
+                continue
+            errors += self._field_errors(spec, item, items,
+                                         prefix=f"标签【{spec.get('label') or tid}】")
         return errors
 
-    # ---------- NPC upsert / delete ----------
-    def upsert_npc(self, npcs: Dict[str, Any], scenes: Dict[str, Any],
-                   items: Dict[str, Any], enemies: Dict[str, Any],
-                   payload: Dict[str, Any]) -> Dict[str, Any]:
-        """新建/更新一个 NPC（属性 + 问候规则 + 对话节点树）"""
-        with self._lock:
-            cleaned, is_new, nid = self._clean_npc(payload, npcs)
-            errors, warnings = self._validate_npc(
-                cleaned, scenes, items, enemies)
-            if errors:
-                return {"success": False, "message": "；".join(errors)}
-
-            npcs[nid] = cleaned
-            self._write_json("npcs", npcs)
-            msg = f"NPC【{cleaned['name']}】已{'新建' if is_new else '保存'}"
-            return {"success": True, "message": msg, "warnings": warnings, "id": nid}
-
-    def delete_npc(self, npcs: Dict[str, Any], npc_id: str,
-                   live_dialogue_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
-        """删除一个 NPC（有玩家正在与其对话时拒绝）"""
-        with self._lock:
-            if npc_id not in npcs:
-                return {"success": False, "message": f"NPC 不存在：{npc_id}"}
-            if npc_id in (live_dialogue_ids or set()):
-                return {"success": False,
-                        "message": "当前有玩家正在和这个 NPC 对话，不能删除"}
-            name = npcs[npc_id].get("name", npc_id)
-            del npcs[npc_id]
-            self._write_json("npcs", npcs)
-            return {"success": True, "message": f"NPC【{name}】已删除"}
+    def _field_errors(self, spec: Dict[str, Any], entity: Dict[str, Any],
+                      items: Dict[str, Any], prefix: str) -> List[str]:
+        """按字段规格校验实体上的字段值（int 区间 / item_list 引用）。"""
+        errors: List[str] = []
+        for field in spec.get("fields", []) or []:
+            key = str(field.get("key", "")).strip()
+            if not key:
+                continue
+            label = field.get("label") or key
+            value = entity.get(key)
+            ftype = field.get("type", "text")
+            if ftype == "int":
+                if not isinstance(value, int) or isinstance(value, bool):
+                    errors.append(f"{prefix}的{label}必须是整数")
+                    continue
+                lo = field.get("min")
+                hi = field.get("max")
+                if isinstance(lo, int) and value < lo:
+                    errors.append(f"{prefix}的{label}不能小于 {lo}")
+                if isinstance(hi, int) and value > hi:
+                    errors.append(f"{prefix}的{label}不能大于 {hi}")
+            elif ftype == "item_list":
+                for iid in value or []:
+                    if iid not in items:
+                        errors.append(f"{prefix}的{label}引用了不存在的物品：{iid}")
+        return errors
 
     # ---------- 开局配置 upsert ----------
     def upsert_config(self, config: Dict[str, Any], scenes: Dict[str, Any],
@@ -457,7 +590,7 @@ class EditorManager:
             self._write_json("config", config)
             return {"success": True, "message": f"事件规则【{rule_id}】已删除（对新开游戏/重置生效）"}
 
-    # ---------- NPC 画布布局（坐标；非游戏内容，独立于 npc_dialogues.json） ----------
+    # ---------- 角色对话画布布局（坐标；非游戏内容，独立于 characters.json） ----------
     LAYOUT_RANGE = (-10000, 10000)
     # 「开始对话」合成卡的布局保留键（不是对话节点，但坐标与普通节点同通道持久化，
     # 修剪孤儿坐标时必须保留；ID_PATTERN 同样接受该键）
@@ -629,6 +762,18 @@ class EditorManager:
         }
         return cleaned, errors
 
+    # ---------- 事件字典（只读词汇表） ----------
+    def load_events(self) -> Dict[str, Any]:
+        """读取事件字典（events.json）；文件缺失/损坏按空字典处理。"""
+        return event_dictionary.load(self._path("events"))
+
+    @staticmethod
+    def _ref_ctx(scenes: Any = None, items: Any = None, enemies: Any = None,
+                 npcs: Any = None) -> Dict[str, Any]:
+        """引用校验上下文：把各实体集合统一成一份 dict 传递。"""
+        return {"scenes": scenes or {}, "items": items or {},
+                "enemies": enemies or {}, "npcs": npcs or {}}
+
     # ---------- 内部：事件规则清洗/校验 ----------
     def _clean_event_rule(self, payload: Dict[str, Any]
                           ) -> Tuple[Dict[str, Any], bool, str]:
@@ -637,16 +782,13 @@ class EditorManager:
                              self.load("config").get("event_rules", [])}
         on = str(payload.get("on", "")).strip()
 
-        # 事件参数过滤 if：只保留该触发器规格里允许的字段
+        # 事件参数过滤 if：只保留字典里该触发器声明的字段
+        entry = event_dictionary.by_key(self.load_events()["triggers"]).get(on)
         event_args: Dict[str, Any] = {}
-        spec = TRIGGER_SPECS.get(on, {})
         raw_if = payload.get("if") or {}
-        if isinstance(raw_if, dict):
-            for field in spec:
-                if field in raw_if:
-                    val = str(raw_if.get(field, "")).strip()
-                    if val:
-                        event_args[field] = val
+        if entry is not None and isinstance(raw_if, dict):
+            event_args = self._clean_entry_params(
+                event_dictionary.params_of(entry), raw_if)
 
         effects = []
         for raw_eff in payload.get("do", []) or []:
@@ -679,76 +821,205 @@ class EditorManager:
         if is_new and any(r.get("id") == rid for r in rules):
             errors.append(f"规则 ID 已存在：{rid}")
 
+        ctx = self._ref_ctx(scenes, items, enemies, npcs)
         on = rule.get("on", "")
-        spec = TRIGGER_SPECS.get(on)
-        if not spec:
-            errors.append(f"不支持的触发器：{on or '（未选择）'}")
+        entry = event_dictionary.by_key(self.load_events()["triggers"]).get(on)
+        if entry is None:
+            errors.append(f"不支持的触发器：{on or '（未选择）'}（事件字典里没有这个条目）")
             return errors  # 后续引用校验都依赖 on，直接返回
 
-        # 必填的事件参数
-        for field, ref in spec.items():
-            kind = ref[:-1] if ref.endswith("?") else ref
-            optional = ref.endswith("?")
-            val = rule.get("if", {}).get(field)
-            if not optional and not val:
-                errors.append(self._trigger_field_label(on, field) + "为必填项")
-                continue
-            if not val:
-                continue
-            if kind == "node":
-                # NPC_TALK 的节点必须属于该规则选中的 NPC
-                npc_id = rule.get("if", {}).get("npc_id", "")
-                npc = npcs.get(npc_id)
-                if npc and val not in npc.get("nodes", {}):
-                    errors.append(f"触发节点【{val}】不属于 NPC【{npc_id}】")
-                elif not npc:
-                    errors.append("请先选择触发 NPC，再指定触发节点")
-            else:
-                errors += self._check_trigger_ref(kind, val, scenes, items,
-                                                  enemies, npcs, on, field)
+        # 触发条件（if）按字典参数表校验
+        errors += self._params_errors(entry, rule.get("if") or {}, ctx, "触发条件")
 
         # 世界状态条件
         if "when" in rule:
-            errors += self._condition_errors(rule["when"], items, enemies, prefix="附加条件")
+            errors += self._condition_errors(rule["when"], ctx, prefix="附加条件")
 
         # 至少一个效果，且逐个校验
         if not rule.get("do"):
             errors.append("至少需要配置一个效果")
         for i, eff in enumerate(rule.get("do", [])):
             errors += self._effect_errors(
-                eff, scenes, items, enemies, prefix=f"第 {i + 1} 个效果")
+                eff, ctx, prefix=f"第 {i + 1} 个效果")
         return errors
 
-    @staticmethod
-    def _trigger_field_label(on: str, field: str) -> str:
-        labels = {
-            "item_id": "触发物品", "from_scene": "触发地点",
-            "enemy_id": "触发敌人", "scene_id": "触发地点",
-            "npc_id": "触发 NPC", "node_id": "触发节点",
-        }
-        return labels.get(field, field)
+    # ---------- 内部：通用参数清洗/校验（字典驱动） ----------
+    def _clean_entry_params(self, params: List[Dict[str, Any]],
+                            payload: Dict[str, Any]) -> Dict[str, Any]:
+        """按字典参数表从提交数据里取值：只保留声明的字段，空值丢弃。"""
+        out: Dict[str, Any] = {}
+        for p in params:
+            field = p["field"]
+            if field not in (payload or {}):
+                continue
+            raw = payload.get(field)
+            if p.get("type") == "int":
+                try:
+                    out[field] = int(raw)
+                except (TypeError, ValueError):
+                    out[field] = raw      # 非法值原样保留，交给校验报错
+                continue
+            text = str(raw).strip()
+            if text:
+                out[field] = text
+        return out
 
-    def _check_trigger_ref(self, kind: str, val: str, scenes: Dict[str, Any],
-                           items: Dict[str, Any], enemies: Dict[str, Any],
-                           npcs: Dict[str, Any], on: str, field: str) -> List[str]:
-        """校验触发器参数引用是否存在（node 类型还要属于该 NPC 的节点）。"""
-        label = self._trigger_field_label(on, field)
-        if kind == "item":
-            return [] if val in items else [f"{label}不存在：{val}"]
-        if kind == "enemy":
-            return [] if val in enemies else [f"{label}不存在：{val}"]
-        if kind == "scene":
-            return [] if val in scenes else [f"{label}不存在：{val}"]
-        if kind == "npc":
-            return [] if val in npcs else [f"{label}不存在：{val}"]
+    def _params_errors(self, entry: Dict[str, Any], data: Dict[str, Any],
+                       ctx: Dict[str, Any], prefix: str) -> List[str]:
+        """按字典条目的 params 校验一份数据（触发器 if / 条件 / 效果 通用）。"""
+        errors: List[str] = []
+        for p in event_dictionary.params_of(entry):
+            label = p.get("label") or p["field"]
+            val = (data or {}).get(p["field"])
+            if val is None or val == "":
+                if p.get("required"):
+                    errors.append(f"{prefix}：{label}为必填项")
+                continue
+            errors += self._param_value_errors(p, val, data, ctx, prefix)
+        return errors
+
+    def _param_value_errors(self, p: Dict[str, Any], val: Any, data: Dict[str, Any],
+                            ctx: Dict[str, Any], prefix: str) -> List[str]:
+        label = p.get("label") or p["field"]
+        ptype = p.get("type") or "text"
+        if ptype == "int":
+            if not isinstance(val, int) or isinstance(val, bool):
+                return [f"{prefix}：{label}必须是整数"]
+            errors = []
+            if isinstance(p.get("min"), int) and val < p["min"]:
+                errors.append(f"{prefix}：{label}不能小于 {p['min']}")
+            if isinstance(p.get("max"), int) and val > p["max"]:
+                errors.append(f"{prefix}：{label}不能大于 {p['max']}")
+            return errors
+        if ptype == "ref":
+            return self._ref_errors(p, val, data, ctx, prefix)
         return []
 
-    # ---------- 内部：NPC 清洗 ----------
-    def _clean_npc(self, payload: Dict[str, Any],
-                   npcs: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
-        nid = str(payload.get("id", "")).strip()
-        is_new = nid not in npcs
+    def _ref_errors(self, p: Dict[str, Any], val: str, data: Dict[str, Any],
+                    ctx: Dict[str, Any], prefix: str) -> List[str]:
+        """引用型参数的校验：直接引用查集合，node/exit 还要属于 parent 字段指定的对象。"""
+        kind = p.get("ref")
+        label = p.get("label") or p["field"]
+        plain = {"item": "items", "scene": "scenes",
+                 "enemy": "enemies", "npc": "npcs"}
+        if kind in plain:
+            return [] if val in ctx[plain[kind]] else [f"{prefix}：{label}不存在：{val}"]
 
+        parent_val = (data or {}).get(p.get("parent") or "")
+        if kind == "node":
+            npc = ctx["npcs"].get(parent_val)
+            if not npc:
+                return [f"{prefix}：请先选择 NPC，再指定{label}"]
+            if val not in (npc.get("nodes") or {}):
+                return [f"{prefix}：{label}【{val}】不属于 NPC【{parent_val}】"]
+        elif kind == "exit":
+            scene = ctx["scenes"].get(parent_val)
+            if not scene:
+                return [f"{prefix}：请先选择地点，再指定{label}"]
+            if val not in (scene.get("exits") or []):
+                return [f"{prefix}：地点【{scene.get('name', parent_val)}】没有{label}：{val}"]
+        return []
+
+    @staticmethod
+    def _entry_atom_errors(entry: Dict[str, Any], atoms: Dict[str, Any],
+                           prefix: str, kind: str,
+                           fields_table: Optional[Dict[str, Any]] = None) -> List[str]:
+        """字典条目自检：绑定的原子必须存在（atoms 登记合法原子名）。
+
+        fields_table 给出「原子 → 必须提供的参数名」，只对参数名固定的原子
+        （效果）适用；条件原子以条目 key 为取值字段，故不传该表。
+        """
+        name = entry.get("label") or entry.get("key")
+        atom = event_dictionary.atom_of(entry)
+        if atom not in atoms:
+            return [f"{prefix}：{kind}条目【{name}】绑定的原子不存在：{atom}"]
+        if not fields_table:
+            return []
+        have = {p["field"] for p in event_dictionary.params_of(entry)}
+        missing = [f for f in fields_table.get(atom, ()) if f not in have]
+        if missing:
+            return [f"{prefix}：{kind}条目【{name}】缺少原子所需参数：{'、'.join(missing)}"]
+        return []
+
+    # ---------- 内部：角色清洗 ----------
+    def _clean_character(self, payload: Dict[str, Any], characters: Dict[str, Any],
+                         tags: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
+        """角色 = 基础三字段 + 标签 + 各标签声明的字段（扁平存放，键即字段 key）。
+
+        字段值按 tags.json 的字段类型归一；标签自带的 runtime.flag 会派生成运行时
+        读取的布尔键。复杂结构（Beat 战斗配置 / 对话树）不走标签字段机制，作为顶层
+        可选结构保留：只在贴了对应标签时才清洗。
+        """
+        cid = str(payload.get("id", "")).strip()
+        is_new = cid not in characters
+        cleaned: Dict[str, Any] = {
+            "id": cid,
+            "name": str(payload.get("name", "")).strip(),
+            "description": str(payload.get("description", "")).strip(),
+        }
+        applied = self._dedupe_strs(payload.get("tags", []))
+        if applied:
+            cleaned["tags"] = applied
+        scene_id = str(payload.get("scene_id", "") or "").strip()
+        if scene_id:
+            cleaned["scene_id"] = scene_id
+
+        for tid in applied:
+            spec = tags.get(tid)
+            if not isinstance(spec, dict):
+                continue  # 未知标签交给校验报错
+            for field in spec.get("fields", []) or []:
+                key = str(field.get("key", "")).strip()
+                if not key:
+                    continue
+                cleaned[key] = self._coerce_field(
+                    field, payload.get(key, field.get("default")))
+            flag = (spec.get("runtime") or {}).get("flag")
+            if flag:
+                cleaned[str(flag)] = True
+
+        if "enemy" in applied:
+            self._clean_beat_fields(cleaned, payload)
+        if "talkable" in applied:
+            self._clean_dialogue_fields(cleaned, payload)
+        return cleaned, is_new, cid
+
+    @staticmethod
+    def _clean_beat_fields(cleaned: Dict[str, Any], payload: Dict[str, Any]) -> None:
+        """Beat 战斗配置（可选）：重击伤害 + 决策器参数 + 征兆/意图文案。"""
+        heavy = payload.get("heavy_attack")
+        if heavy not in (None, ""):
+            cleaned["heavy_attack"] = EditorManager._to_int(heavy, -1)
+        brain_raw = payload.get("brain")
+        if isinstance(brain_raw, dict):
+            brain: Dict[str, Any] = {}
+            for key in ("rhythm", "frenzy_rhythm"):
+                seq = EditorManager._dedupe_strs(brain_raw.get(key, []))
+                if seq:
+                    brain[key] = seq
+            if "dodge_player_charge" in brain_raw:
+                brain["dodge_player_charge"] = bool(brain_raw.get("dodge_player_charge"))
+            mode = str(brain_raw.get("low_hp_mode", "")).strip()
+            if mode:
+                brain["low_hp_mode"] = mode
+            ratio = brain_raw.get("low_hp_ratio")
+            if ratio not in (None, ""):
+                try:
+                    brain["low_hp_ratio"] = float(ratio)
+                except (TypeError, ValueError):
+                    brain["low_hp_ratio"] = -1
+            if brain:
+                cleaned["brain"] = brain
+        tg = EditorManager._clean_intent_phrase_map(payload.get("telegraphs"))
+        if tg:
+            cleaned["telegraphs"] = tg
+        it = EditorManager._clean_intent_label_map(payload.get("intents"))
+        if it:
+            cleaned["intents"] = it
+
+    def _clean_dialogue_fields(self, cleaned: Dict[str, Any],
+                               payload: Dict[str, Any]) -> None:
+        """对话树（贴 talkable 时）：起始节点 + 问候规则 + 对话节点树。"""
         # 问候规则：[{"if": 条件dict|None, "node": 节点id}]
         rules: List[Dict[str, Any]] = []
         for rule in payload.get("greeting_rules", []) or []:
@@ -777,15 +1048,9 @@ class EditorManager:
                 "choices": choices,
             }
 
-        cleaned = {
-            "id": nid,
-            "name": str(payload.get("name", "")).strip(),
-            "scene_id": str(payload.get("scene_id", "")).strip(),
-            "greeting": str(payload.get("greeting", "") or "greet").strip() or "greet",
-            "greeting_rules": rules,
-            "nodes": nodes,
-        }
-        return cleaned, is_new, nid
+        cleaned["greeting"] = str(payload.get("greeting", "") or "greet").strip() or "greet"
+        cleaned["greeting_rules"] = rules
+        cleaned["nodes"] = nodes
 
     def _clean_choice(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         choice: Dict[str, Any] = {"text": str(raw.get("text", "")).strip()}
@@ -807,80 +1072,140 @@ class EditorManager:
         return choice
 
     def _clean_condition(self, raw: Any) -> Optional[Dict[str, Any]]:
-        """把前端提交的条件整理成单键规范条件；空条件返回 None。"""
+        """把前端提交的条件整理成单键规范条件；字典里没有的类型/空条件返回 None。
+
+        条件的判别键 = 字典条目的 key，且必须与某个 params 字段同名。
+        """
         if not isinstance(raw, dict) or not raw:
             return None
-        if "flag" in raw:
-            name = str(raw.get("flag", "")).strip()
-            if not name:
-                return None
-            cond = {"flag": name}
-            if "value" in raw:
-                cond["value"] = raw.get("value")
-            return cond
-        if "has_item" in raw:
-            return {"has_item": str(raw.get("has_item", "")).strip()}
-        if "enemy_killed" in raw:
-            return {"enemy_killed": str(raw.get("enemy_killed", "")).strip()}
-        if "gold_gte" in raw:
-            return {"gold_gte": self._to_int(raw.get("gold_gte"), -1)}
+        for entry in self.load_events()["conditions"]:
+            if entry["key"] in raw:
+                return self._clean_entry_params(
+                    event_dictionary.params_of(entry), raw) or None
         return None
 
     def _clean_effect(self, raw: Dict[str, Any]) -> Dict[str, Any]:
-        """按效果类型白名单整理字段（未知类型保留 type 交给校验报错）。"""
+        """按事件字典的效果参数表整理字段（未知类型保留 type 交给校验报错）。"""
         etype = str(raw.get("type", "")).strip()
-        eff = {"type": etype}
-        if etype == "set_flag":
-            eff["flag"] = str(raw.get("flag", "")).strip()
-            if "value" in raw:
-                eff["value"] = raw.get("value")
-        elif etype in ("give_item", "remove_item"):
-            eff["item"] = str(raw.get("item", "")).strip()
-        elif etype in ("heal", "max_hp", "gold"):
-            eff["amount"] = self._to_int(raw.get("amount"), -1)
-        elif etype == "teleport":
-            eff["scene"] = str(raw.get("scene", "")).strip()
-        elif etype == "start_combat":
-            eff["enemy"] = str(raw.get("enemy", "")).strip()
-        elif etype == "unlock":
-            eff["scene"] = str(raw.get("scene", "")).strip()
-            eff["exit"] = str(raw.get("exit", "")).strip()
+        entry = event_dictionary.by_key(self.load_events()["effects"]).get(etype)
+        eff: Dict[str, Any] = {"type": etype}
+        if entry is not None:
+            eff.update(self._clean_entry_params(
+                event_dictionary.params_of(entry), raw))
         return eff
 
-    # ---------- 内部：NPC 校验 ----------
-    def _validate_npc(self, npc: Dict[str, Any], scenes: Dict[str, Any],
-                      items: Dict[str, Any], enemies: Dict[str, Any]
-                      ) -> Tuple[List[str], List[str]]:
+    # ---------- 内部：角色校验 ----------
+    def _validate_character(self, char: Dict[str, Any], characters: Dict[str, Any],
+                            scenes: Dict[str, Any], items: Dict[str, Any],
+                            tags: Dict[str, Any]) -> Tuple[List[str], List[str]]:
         errors: List[str] = []
         warnings: List[str] = []
 
-        if not ID_PATTERN.match(npc["id"]):
-            errors.append("NPC ID 只能用小写字母/数字/下划线，长度 1~32（例：npc_merchant）")
-        if not npc["name"]:
+        if not ID_PATTERN.match(char["id"]):
+            errors.append("角色 ID 只能用小写字母/数字/下划线，长度 1~32（例：forest_wolf）")
+        if not char["name"]:
             errors.append("名称不能为空")
-        elif len(npc["name"]) > NAME_MAX:
+        elif len(char["name"]) > NAME_MAX:
             errors.append(f"名称不能超过 {NAME_MAX} 个字")
-        if not npc["scene_id"]:
-            errors.append("必须选择所在地点")
-        elif npc["scene_id"] not in scenes:
-            errors.append(f"所在地点不存在：{npc['scene_id']}（请先在地点页新建）")
+        if not char["description"]:
+            errors.append("描述不能为空")
+        elif len(char["description"]) > DESC_MAX:
+            errors.append(f"描述不能超过 {DESC_MAX} 个字")
 
-        nodes = npc["nodes"]
+        applied = char.get("tags", [])
+        for tid in applied:
+            spec = tags.get(tid)
+            if not isinstance(spec, dict):
+                errors.append(f"标签不存在：{tid}（请先在标签页新建）")
+                continue
+            target = spec.get("target", "item")
+            if target != "character":
+                errors.append(f"标签【{spec.get('label') or tid}】只能贴在"
+                              f"{'物品' if target == 'item' else '地点'}上，不能用于角色")
+                continue
+            errors += self._field_errors(spec, char, items,
+                                         prefix=f"标签【{spec.get('label') or tid}】")
+
+        # 运行时视图：敌人 / NPC（对话条件与效果里的引用按它们校验）
+        enemies = {cid: c for cid, c in characters.items()
+                   if "enemy" in (c.get("tags") or [])}
+        npcs = {cid: c for cid, c in characters.items()
+                if "talkable" in (c.get("tags") or [])}
+        if "enemy" in applied:
+            errors += self._beat_field_errors(char)
+        if "talkable" in applied:
+            d_err, d_warn = self._dialogue_errors(char, scenes, items, enemies, npcs)
+            errors += d_err
+            warnings += d_warn
+        return errors, warnings
+
+    @staticmethod
+    def _beat_field_errors(char: Dict[str, Any]) -> List[str]:
+        """Beat 战斗结构字段校验（动作名以引擎 INTENT_TEXT 为准）。"""
+        errors: List[str] = []
+        if "heavy_attack" in char:
+            if not isinstance(char["heavy_attack"], int) or char["heavy_attack"] < 0:
+                errors.append("重击伤害必须是非负整数")
+        brain = char.get("brain")
+        if brain:
+            for key in ("rhythm", "frenzy_rhythm"):
+                for step in brain.get(key, []):
+                    if step not in INTENT_TEXT:
+                        errors.append(
+                            f"节奏环 {key} 里有未知动作：{step}"
+                            f"（可用：{'/'.join(INTENT_TEXT)}）")
+            mode = brain.get("low_hp_mode")
+            if mode and mode not in ("brace", "frenzy"):
+                errors.append("残血行为只能是 brace（龟息）或 frenzy（狂暴）")
+            ratio = brain.get("low_hp_ratio")
+            if ratio is not None and not (isinstance(ratio, (int, float)) and 0 < ratio <= 1):
+                errors.append("残血阈值必须是 0~1 的小数（如 0.25）")
+        for field in ("telegraphs", "intents"):
+            for intent, val in (char.get(field) or {}).items():
+                if intent not in INTENT_TEXT:
+                    errors.append(
+                        f"{field} 里有未知动作：{intent}（可用：{'/'.join(INTENT_TEXT)}）")
+                if field == "telegraphs":
+                    for p in val:
+                        if len(p) > DESC_MAX:
+                            errors.append(f"征兆文案不能超过 {DESC_MAX} 个字")
+                else:
+                    if len(val[0]) > NAME_MAX:
+                        errors.append(f"意图名称不能超过 {NAME_MAX} 个字")
+                    if len(val[1]) > DESC_MAX:
+                        errors.append(f"意图提示不能超过 {DESC_MAX} 个字")
+        return errors
+
+    def _dialogue_errors(self, char: Dict[str, Any], scenes: Dict[str, Any],
+                         items: Dict[str, Any], enemies: Dict[str, Any],
+                         npcs: Dict[str, Any]
+                         ) -> Tuple[List[str], List[str]]:
+        """可对话角色（talkable）的对话树校验。"""
+        errors: List[str] = []
+        warnings: List[str] = []
+        ctx = self._ref_ctx(scenes, items, enemies, npcs)
+
+        if not char.get("scene_id"):
+            errors.append("可对话角色必须选择所在地点")
+        elif char["scene_id"] not in scenes:
+            errors.append(f"所在地点不存在：{char['scene_id']}（请先在地点页新建）")
+
+        nodes = char.get("nodes") or {}
         if not nodes:
-            errors.append("至少需要一个对话节点（默认起点 greet）")
+            errors.append("可对话角色至少需要一个对话节点（默认起点 greet）")
         for node_id in nodes:
             if not ID_PATTERN.match(node_id):
                 errors.append(f"节点 ID 非法：{node_id}（小写字母/数字/下划线）")
 
-        if npc["greeting"] not in nodes:
-            errors.append(f"起始节点不存在：{npc['greeting']}")
+        if char.get("greeting") not in nodes:
+            errors.append(f"起始节点不存在：{char.get('greeting')}")
 
         # 问候规则
-        for i, rule in enumerate(npc["greeting_rules"]):
+        for i, rule in enumerate(char.get("greeting_rules") or []):
             if rule["node"] not in nodes:
                 errors.append(f"问候规则第 {i + 1} 条指向的节点不存在：{rule['node']}")
             if "if" in rule:
-                errors += self._condition_errors(rule["if"], items, enemies,
+                errors += self._condition_errors(rule["if"], ctx,
                                                  prefix=f"问候规则第 {i + 1} 条")
 
         # 节点与选项
@@ -898,15 +1223,14 @@ class EditorManager:
                 if "requires_item" in choice and choice["requires_item"] not in items:
                     errors.append(f"{where}需要的物品不存在：{choice['requires_item']}")
                 if "if" in choice:
-                    errors += self._condition_errors(
-                        choice["if"], items, enemies, prefix=where)
+                    errors += self._condition_errors(choice["if"], ctx, prefix=where)
                 for k, eff in enumerate(choice.get("effects", [])):
                     errors += self._effect_errors(
-                        eff, scenes, items, enemies, prefix=f"{where}第 {k + 1} 个效果")
+                        eff, ctx, prefix=f"{where}第 {k + 1} 个效果")
 
         # 不可达节点警告（从起始节点 + 问候规则起点 BFS）
         if not errors:
-            entries = {npc["greeting"]} | {r["node"] for r in npc["greeting_rules"]}
+            entries = {char.get("greeting")} | {r["node"] for r in char.get("greeting_rules") or []}
             seen: Set[str] = set()
             stack = list(entries)
             while stack:
@@ -924,168 +1248,35 @@ class EditorManager:
 
         return errors, warnings
 
-    def _condition_errors(self, cond: Dict[str, Any], items: Dict[str, Any],
-                          enemies: Dict[str, Any], prefix: str = "条件") -> List[str]:
-        """校验单个条件 dict（假设已通过 _clean_condition 整理）。"""
-        if "flag" in cond:
-            if not cond["flag"]:
-                return [f"{prefix}：标志名不能为空"]
-            return []
-        if "has_item" in cond:
-            if cond["has_item"] not in items:
-                return [f"{prefix}：物品不存在：{cond['has_item']}"]
-            return []
-        if "enemy_killed" in cond:
-            if cond["enemy_killed"] not in enemies:
-                return [f"{prefix}：敌人不存在：{cond['enemy_killed']}"]
-            return []
-        if "gold_gte" in cond:
-            if not isinstance(cond["gold_gte"], int) or cond["gold_gte"] < 0:
-                return [f"{prefix}：金币数量必须是非负整数"]
-            return []
+    def _condition_errors(self, cond: Dict[str, Any], ctx: Dict[str, Any],
+                          prefix: str = "条件") -> List[str]:
+        """校验单个条件 dict（假设已通过 _clean_condition 整理）；条目来自事件字典。"""
+        for entry in self.load_events()["conditions"]:
+            if entry["key"] not in cond:
+                continue
+            fields = {p["field"] for p in event_dictionary.params_of(entry)}
+            if entry["key"] not in fields:
+                name = entry.get("label") or entry["key"]
+                return [f"{prefix}：条件条目【{name}】的 params 必须有名称为"
+                        f"{entry['key']} 的参数（它就是条件字典的判别键）"]
+            fatal = self._entry_atom_errors(entry, CONDITION_ATOMS, prefix, "条件")
+            if fatal:
+                return fatal
+            return self._params_errors(entry, cond, ctx, prefix)
         return [f"{prefix}：未知条件类型"]
 
-    def _effect_errors(self, eff: Dict[str, Any], scenes: Dict[str, Any],
-                       items: Dict[str, Any], enemies: Dict[str, Any],
+    def _effect_errors(self, eff: Dict[str, Any], ctx: Dict[str, Any],
                        prefix: str = "效果") -> List[str]:
-        """校验单个效果 dict（假设已通过 _clean_effect 整理）。"""
-        t = eff.get("type")
-        if t == "set_flag":
-            return [] if eff.get("flag") else [f"{prefix}（设置标志）：标志名不能为空"]
-        if t in ("give_item", "remove_item"):
-            iid = eff.get("item", "")
-            return [] if iid in items else [f"{prefix}：物品不存在：{iid}"]
-        if t == "heal":
-            ok = isinstance(eff.get("amount"), int) and 1 <= eff["amount"] <= 999999
-            return [] if ok else [f"{prefix}（治疗）：数值必须是 1~999999 的整数"]
-        if t == "max_hp":
-            ok = isinstance(eff.get("amount"), int) and 1 <= eff["amount"] <= 999
-            return [] if ok else [f"{prefix}（生命上限）：数值必须是 1~999 的整数"]
-        if t == "gold":
-            ok = isinstance(eff.get("amount"), int) and eff["amount"] >= 0
-            return [] if ok else [f"{prefix}（金币）：数值必须是非负整数"]
-        if t == "teleport":
-            sid = eff.get("scene", "")
-            return [] if sid in scenes else [f"{prefix}：目标地点不存在：{sid}"]
-        if t == "start_combat":
-            eid = eff.get("enemy", "")
-            return [] if eid in enemies else [f"{prefix}：敌人不存在：{eid}"]
-        if t == "unlock":
-            sid = eff.get("scene", "")
-            exit_id = eff.get("exit", "")
-            if sid not in scenes:
-                return [f"{prefix}：锁定出口所在地点不存在：{sid}"]
-            if not exit_id:
-                return [f"{prefix}：必须指定要解锁的出口"]
-            if exit_id not in scenes[sid].get("exits", []):
-                return [f"{prefix}：地点【{scenes[sid].get('name', sid)}】没有出口：{exit_id}"]
-            return []
-        return [f"{prefix}：未知效果类型：{t}"]
-
-    # ---------- 内部：敌人清洗/校验 ----------
-    def _clean_enemy(self, payload: Dict[str, Any],
-                     enemies: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
-        eid = str(payload.get("id", "")).strip()
-        is_new = eid not in enemies
-        cleaned: Dict[str, Any] = {
-            "id": eid,
-            "name": str(payload.get("name", "")).strip(),
-            "hp": self._to_int(payload.get("hp"), 30),
-            "attack": self._to_int(payload.get("attack"), 5),
-            "defense": self._to_int(payload.get("defense"), 0),
-            "description": str(payload.get("description", "")).strip(),
-            "reward_items": self._dedupe_strs(payload.get("reward_items", [])),
-            "reward_gold": self._to_int(payload.get("reward_gold"), 0),
-        }
-        # Beat 战斗可选字段：重击伤害 + 决策器参数（brain）+ 征兆/意图文案
-        heavy = payload.get("heavy_attack")
-        if heavy not in (None, ""):
-            cleaned["heavy_attack"] = self._to_int(heavy, -1)
-        brain_raw = payload.get("brain")
-        if isinstance(brain_raw, dict):
-            brain: Dict[str, Any] = {}
-            for key in ("rhythm", "frenzy_rhythm"):
-                seq = self._dedupe_strs(brain_raw.get(key, []))
-                if seq:
-                    brain[key] = seq
-            if "dodge_player_charge" in brain_raw:
-                brain["dodge_player_charge"] = bool(brain_raw.get("dodge_player_charge"))
-            mode = str(brain_raw.get("low_hp_mode", "")).strip()
-            if mode:
-                brain["low_hp_mode"] = mode
-            ratio = brain_raw.get("low_hp_ratio")
-            if ratio not in (None, ""):
-                try:
-                    brain["low_hp_ratio"] = float(ratio)
-                except (TypeError, ValueError):
-                    brain["low_hp_ratio"] = -1
-            if brain:
-                cleaned["brain"] = brain
-        tg = self._clean_intent_phrase_map(payload.get("telegraphs"))
-        if tg:
-            cleaned["telegraphs"] = tg
-        it = self._clean_intent_label_map(payload.get("intents"))
-        if it:
-            cleaned["intents"] = it
-        return cleaned, is_new, eid
-
-    def _validate_enemy(self, enemy: Dict[str, Any], items: Dict[str, Any],
-                        is_new: bool) -> List[str]:
-        errors: List[str] = []
-        if not ID_PATTERN.match(enemy["id"]):
-            errors.append("敌人 ID 只能用小写字母/数字/下划线，长度 1~32（例：cave_goblin）")
-        if not enemy["name"]:
-            errors.append("名称不能为空")
-        elif len(enemy["name"]) > NAME_MAX:
-            errors.append(f"名称不能超过 {NAME_MAX} 个字")
-        if not enemy["description"]:
-            errors.append("描述不能为空")
-        elif len(enemy["description"]) > DESC_MAX:
-            errors.append(f"描述不能超过 {DESC_MAX} 个字")
-        if not isinstance(enemy["hp"], int) or not (1 <= enemy["hp"] <= 999999):
-            errors.append("生命值必须是 1~999999 的整数")
-        if not isinstance(enemy["attack"], int) or not (0 <= enemy["attack"] <= 999999):
-            errors.append("攻击力必须是非负整数")
-        if not isinstance(enemy["defense"], int) or not (0 <= enemy["defense"] <= 999999):
-            errors.append("防御力必须是非负整数")
-        if not isinstance(enemy["reward_gold"], int) or enemy["reward_gold"] < 0:
-            errors.append("金币掉落必须是非负整数")
-        for iid in enemy["reward_items"]:
-            if iid not in items:
-                errors.append(f"掉落物品不存在：{iid}（请先在物品页新建）")
-        # ---- Beat 战斗字段（可选；配置了才校验，动作名以引擎 INTENT_TEXT 为准）----
-        if "heavy_attack" in enemy:
-            if not isinstance(enemy["heavy_attack"], int) or enemy["heavy_attack"] < 0:
-                errors.append("重击伤害必须是非负整数")
-        brain = enemy.get("brain")
-        if brain:
-            for key in ("rhythm", "frenzy_rhythm"):
-                for step in brain.get(key, []):
-                    if step not in INTENT_TEXT:
-                        errors.append(
-                            f"节奏环 {key} 里有未知动作：{step}"
-                            f"（可用：{'/'.join(INTENT_TEXT)}）")
-            mode = brain.get("low_hp_mode")
-            if mode and mode not in ("brace", "frenzy"):
-                errors.append("残血行为只能是 brace（龟息）或 frenzy（狂暴）")
-            ratio = brain.get("low_hp_ratio")
-            if ratio is not None and not (isinstance(ratio, (int, float)) and 0 < ratio <= 1):
-                errors.append("残血阈值必须是 0~1 的小数（如 0.25）")
-        for field in ("telegraphs", "intents"):
-            for intent, val in (enemy.get(field) or {}).items():
-                if intent not in INTENT_TEXT:
-                    errors.append(
-                        f"{field} 里有未知动作：{intent}（可用：{'/'.join(INTENT_TEXT)}）")
-                if field == "telegraphs":
-                    for p in val:
-                        if len(p) > DESC_MAX:
-                            errors.append(f"征兆文案不能超过 {DESC_MAX} 个字")
-                else:
-                    if len(val[0]) > NAME_MAX:
-                        errors.append(f"意图名称不能超过 {NAME_MAX} 个字")
-                    if len(val[1]) > DESC_MAX:
-                        errors.append(f"意图提示不能超过 {DESC_MAX} 个字")
-        return errors
+        """校验单个效果 dict（假设已通过 _clean_effect 整理）；条目来自事件字典。"""
+        key = eff.get("type")
+        entry = event_dictionary.by_key(self.load_events()["effects"]).get(key)
+        if entry is None:
+            return [f"{prefix}：未知效果类型：{key}"]
+        fatal = self._entry_atom_errors(entry, EFFECT_ATOM_FIELDS, prefix, "效果",
+                                       EFFECT_ATOM_FIELDS)
+        if fatal:
+            return fatal
+        return self._params_errors(entry, eff, ctx, prefix)
 
     # ---------- 内部：Beat 战斗文案清洗 ----------
     @staticmethod

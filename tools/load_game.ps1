@@ -1,4 +1,4 @@
-# Load / restore a game project (swap the 5 game JSON files in game_data/).
+# Load / restore a game project (swap the game JSON files in game_data/).
 # NOTE: keep this file ASCII-only so Windows PowerShell 5.1 (GBK default) parses it.
 #
 # Usage (run from repo root):
@@ -8,7 +8,7 @@
 #
 # Notes:
 #   - First load backs up current game_data to game_data.bak (never overwritten).
-#   - Only the 5 game JSON files are replaced; npc_layouts.json is left untouched.
+#   - Only the game JSON files listed below are replaced; npc_layouts.json is left untouched.
 #   - Data is read into memory at app.py startup, so restart app.py after switching.
 
 param(
@@ -21,7 +21,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $dataDir = Join-Path $root "game_data"
 $bakDir  = Join-Path $root "game_data.bak"
 $files = @("game_config.json", "scenes.json", "items.json",
-           "enemies.json", "npc_dialogues.json")
+           "tags.json", "characters.json")
 
 if ($Restore) {
     if (-not (Test-Path $bakDir)) {

@@ -104,8 +104,8 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
 | `game_config.json` | 标题/简介/出生点/初始背包金币/玩家属性 + 2 条事件规则 | 事件只在**新会话**装配，改完要 reset |
 | `scenes.json` | village / forest / cave | 出口是**单向**的，要双向得两边互写；锁门写 `locked_exits`，解锁靠事件 |
 | `items.json` | 铁剑 / 药水 / 钥匙 / 金币 | 武器 `is_weapon+damage`；消耗品 `usable+heal`；货币要 `is_currency+currency_value` |
-| `enemies.json` | slime / stone_guard（Boss）两只 | `reward_items` 击杀落在地上，`reward_gold` 直接加钱；`heavy_attack`/`brain`/`telegraphs`/`intents` 为 beat 战斗的敌人级覆盖（编辑器敌人页签可配） |
-| `npc_dialogues.json` | old_guard：greet / prep / after_victory / leave | `greeting_rules` 按序首匹配；flag 满足时入口切到 after_victory |
+| `tags.json` | weapon / consumable / currency / enemy / talkable 五个标签 | 标签定义字段组；物品勾标签才展开字段（`runtime.flag` 派生旧键如 `is_weapon`） |
+| `characters.json` | slime / stone_guard（Boss）两只怪 + old_guard（可对话） | 贴 `enemy` 才能战斗（`reward_items` 击杀落在地上，`reward_gold` 直接加钱；`heavy_attack`/`brain`/`telegraphs`/`intents` 为 beat 战斗的敌人级覆盖）；贴 `talkable` 才能对话（`scene_id` + `greeting` + `greeting_rules:` 按序首匹配，flag 满足时入口切到 after_victory）；两个标签可同时贴，编辑器统一走「角色」页签 |
 
 两条事件规则串起任务线：
 1. `ENEMY_KILLED slime → unlock forest 的 cave 出口`（打怪开门）
@@ -128,6 +128,6 @@ flags、开局配置。
 # 通过输出：OK：数据自洽，0 个警告
 ```
 
-校验器检查：ID 格式、跨文件引用（出口/物品/敌人/NPC/掉落/商店）、锁门有解锁途径、
+校验器检查：ID 格式、跨文件引用（出口/物品/角色（敌人与对话）/掉落/商店）、锁门有解锁途径、
 事件触发器参数（与 `engine/editor_manager.py` 的 `TRIGGER_SPECS` 对齐）、
 效果引用、对话树可达性。AI 改完数据后应先跑它，再进游戏。

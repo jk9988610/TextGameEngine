@@ -15,7 +15,7 @@ import sys
 
 ID_PATTERN = re.compile(r"^[a-z0-9_]{1,32}$")
 FILES = ["game_config.json", "scenes.json", "items.json",
-         "enemies.json", "npc_dialogues.json"]
+         "tags.json", "characters.json"]
 TRIGGER_COND_KEYS = {"item_id", "enemy_id", "scene_id", "npc_id",
                      "flag", "from_scene", "gold_gte"}
 
@@ -41,14 +41,18 @@ def main():
         return finish(errors, warns)
 
     cfg, scenes = data["game_config"], data["scenes"]
-    items, enemies, npcs = data["items"], data["enemies"], data["npc_dialogues"]
+    items, characters = data["items"], data["characters"]
+    # 角色按标签派生运行时视图：enemy=可战斗，talkable=可对话
+    enemies = {k: v for k, v in characters.items()
+               if "enemy" in (v.get("tags") or [])}
+    npcs = {k: v for k, v in characters.items()
+            if "talkable" in (v.get("tags") or [])}
 
     def err(msg): errors.append(msg)
     def warn(msg): warns.append(msg)
 
     # ---- ID 格式 ----
-    for name, coll in (("场景", scenes), ("物品", items),
-                       ("敌人", enemies), ("NPC", npcs)):
+    for name, coll in (("场景", scenes), ("物品", items), ("角色", characters)):
         for k, v in coll.items():
             if not ID_PATTERN.match(k):
                 err(f"{name} ID 非法：{k}")
