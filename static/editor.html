@@ -172,6 +172,48 @@
                     <div class="ed-check-group" id="enemy-rewards"></div>
                 </div>
 
+                <details class="ed-field" id="enemy-beat-box">
+                    <summary>Beat 战斗配置（可选：留空 = 用引擎默认决策器）</summary>
+                    <div class="ed-field-row">
+                        <label class="ed-field">
+                            <span>重击伤害（留空 = 用全局配置）</span>
+                            <input type="number" id="enemy-heavy" min="0" step="1" placeholder="10">
+                        </label>
+                        <label class="ed-field">
+                            <span>残血行为</span>
+                            <select id="enemy-lowhp-mode">
+                                <option value="">默认（龟息 brace）</option>
+                                <option value="brace">龟息 brace（蜷缩挡普攻）</option>
+                                <option value="frenzy">狂暴 frenzy（不蜷缩，换快节奏）</option>
+                            </select>
+                        </label>
+                        <label class="ed-field">
+                            <span>残血阈值（HP 比例，0~1）</span>
+                            <input type="number" id="enemy-lowhp-ratio" min="0.01" max="1" step="0.05" placeholder="0.25">
+                        </label>
+                        <label class="ed-field ed-check-inline">
+                            <span>会躲玩家重击</span>
+                            <input type="checkbox" id="enemy-dodge-charge" checked>
+                        </label>
+                    </div>
+                    <label class="ed-field">
+                        <span>节奏环（逗号分隔，循环执行；重击由蓄力承诺位打出。可用：bash/charge/brace/dodge）</span>
+                        <input type="text" id="enemy-rhythm" placeholder="例：bash,charge（默认 bash,charge）">
+                    </label>
+                    <label class="ed-field">
+                        <span>狂暴节奏环（残血狂暴时替换上面的节奏环）</span>
+                        <input type="text" id="enemy-frenzy-rhythm" placeholder="例：bash,bash,charge">
+                    </label>
+                    <label class="ed-field">
+                        <span>模糊征兆（JSON：每个动作的动态叙述，拍序轮换；留空 = 引擎默认文案）</span>
+                        <textarea id="enemy-telegraphs" rows="3" placeholder='{"bash": ["它压低身子，像弹簧一样逼近。"]}'></textarea>
+                    </label>
+                    <label class="ed-field">
+                        <span>意图明牌（JSON：破绽拍/点名时显示的 [名称, 提示]；留空 = 引擎默认文案）</span>
+                        <textarea id="enemy-intents" rows="3" placeholder='{"charge": ["蓄力重击", "下一拍重击 10 点！"]}'></textarea>
+                    </label>
+                </details>
+
                 <div class="ed-form-actions">
                     <button type="button" class="ed-btn primary" id="enemy-save">保存</button>
                     <button type="button" class="ed-btn danger hidden" id="enemy-delete">删除</button>

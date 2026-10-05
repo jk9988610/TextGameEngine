@@ -261,17 +261,11 @@ async function selectDialogueChoice(choiceIndex) {
 const combatPanel = document.getElementById('combat-panel');
 const combatLog = document.getElementById('combat-log');
 const attackBtn = document.getElementById('attack-btn');
-// PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API
-const fleeBtn = document.getElementById('flee-btn');
-// PROTOTYPE-GAME：战斗防御 —— 待试玩验证后抽离，勿当通用API
-const defendBtn = document.getElementById('defend-btn');
 let _combatActive = false;     // 跟踪弹窗激活态，用于"仅重开时回中"
 
 attackBtn.addEventListener('click', () => attackEnemy());
-fleeBtn.addEventListener('click', () => fleeCombat());
-defendBtn.addEventListener('click', () => defendCombat());
 
-// PROTOTYPE-GAME：Beat 制战斗 —— 待试玩验证后抽离，勿当通用API
+// Beat 制战斗（引擎模块）：拍面条 + 动作区
 const beatBar = document.getElementById('beat-bar');
 const beatActions = document.getElementById('beat-actions');
 const classicActions = document.getElementById('classic-actions');
@@ -307,11 +301,7 @@ function renderCombat(d) {
     if (!d || !d.active) {
         combatPanel.classList.remove('active');
         _combatActive = false;
-        // PROTOTYPE-GAME：战斗脱离 —— 非战斗态隐藏脱离按钮
-        fleeBtn.style.display = 'none';
-        // PROTOTYPE-GAME：战斗防御 —— 非战斗态隐藏防御按钮
-        defendBtn.style.display = 'none';
-        // PROTOTYPE-GAME：Beat 制 —— 非战斗态隐藏意图行与四动作
+        // 非战斗态隐藏拍面条与动作区
         beatBar.style.display = 'none';
         beatActions.style.display = 'none';
         classicActions.style.display = '';
@@ -334,16 +324,14 @@ function renderCombat(d) {
     _combatActive = true;
     combatPanel.classList.add('active');
 
-    // PROTOTYPE-GAME：Beat 制与旧回合制两套动作区互斥
-    const beat = d.proto_beat;
+    // Beat 制与旧回合制两套动作区互斥
+    const beat = d.beat;
     const inBeat = !!(beat && beat.in_battle);
     classicActions.style.display = inBeat ? 'none' : '';
     beatBar.style.display = inBeat ? '' : 'none';
     beatActions.style.display = inBeat ? 'flex' : 'none';
     if (inBeat) {
-        fleeBtn.style.display = 'none';
-        defendBtn.style.display = 'none';
-        beatIntentEl.textContent = `第 ${beat.beat} 拍 · 史莱姆的动作表现：${beat.intent_hint || '暂时无法判断'}`;
+        beatIntentEl.textContent = `第 ${beat.beat} 拍 · ${beat.intent_label || '敌人的动作'}：${beat.intent_hint || '暂时无法判断'}`;
         const pips = '●'.repeat(beat.ap) + '○'.repeat(Math.max(0, beat.ap_max - beat.ap));
         beatApEl.textContent = `行动力 AP：${pips}（${beat.ap}/${beat.ap_max}）`
             + (beat.charged ? '　【蓄力就绪：本拍攻击=重击】' : '')
@@ -361,11 +349,6 @@ function renderCombat(d) {
             if (tag) tag.textContent = `${action.tag ? `${action.tag} · ` : ''}(${cost}AP)`;
             btn.firstChild.textContent = `${label} `;
         });
-    } else {
-        // PROTOTYPE-GAME：战斗脱离 —— 仅当前工程启用脱离时显示按钮
-        fleeBtn.style.display = d.proto_retreat ? '' : 'none';
-        // PROTOTYPE-GAME：战斗防御 —— 仅当前工程启用防御时显示按钮
-        defendBtn.style.display = d.proto_defend ? '' : 'none';
     }
 
     // 敌人
@@ -508,45 +491,6 @@ async function attackEnemy() {
     // 玩家死亡 → 面板会被移除（后端已处理回酒馆）
     // 敌人死亡 → 面板会被移除（后端已处理结束战斗）
     // 刷新所有状态
-    await fetchState();
-}
-
-// PROTOTYPE-GAME：战斗防御 —— 待试玩验证后抽离，勿当通用API
-async function defendCombat() {
-    /** 本回合防御：不攻击，敌人伤害减半（可为 0）；战斗继续 */
-    const res = await fetch('/api/combat/defend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-    });
-    const data = await res.json();
-    if (!data.success && !data.player_dead) {
-        showActionMsg(data.message || '无法防御');
-        return;
-    }
-    renderCombatLog(data);
-    showActionMsg(data.message || '');
-    await fetchState();
-}
-
-// PROTOTYPE-GAME：战斗脱离 —— 待试玩验证后抽离，勿当通用API
-async function fleeCombat() {
-    /** 尝试脱离：成功 → 原地停战、双方残血（行动一段时间后恢复）；失败 → 被反击一回合，战斗继续 */
-    const res = await fetch('/api/combat/flee', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-    });
-    const data = await res.json();
-
-    // 非法拦截（无战斗/工程未启用）：只提示，不刷日志
-    if (!data.success && !data.player_dead) {
-        showActionMsg(data.message || '无法脱离');
-        return;
-    }
-    renderCombatLog(data);
-    showActionMsg(data.message || '');
-    // 成功 → 面板关闭但人虫都在原地；失败 → 面板保留、HP 刷新
     await fetchState();
 }
 

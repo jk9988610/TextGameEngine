@@ -37,13 +37,14 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
 | 4 | 森林 `forest` | 往北走，立刻进入与「森林史莱姆」的战斗，打赢它 | 战斗 / 武器伤害公式 |
 | 5 | 森林 | 史莱姆死亡：获得 5 金币 + 石门钥匙，石门「当啷」解锁 | 敌人掉落金币/物品 + `ENEMY_KILLED` 事件 + `unlock` 效果 |
 | 6 | 森林 | 走进洞穴（没打史莱姆之前这里是锁着的） | 锁门 `locked_exits` / 单向出口 |
-| 7 | 洞穴 `cave` | 挑战挡在石台前的「石门守卫」，打倒它 | Boss 战：`_proto_brain` 差异化决策器 / 掉落金币 + 核晶 |
+| 7 | 洞穴 `cave` | 挑战挡在石台前的「石门守卫」，打倒它 | Boss 战：`brain` 差异化决策器 / 掉落金币 + 核晶 |
 | 8 | 洞穴 `cave` | 捡起石台上的金币 | 场景物品拾取 / 货币自动折算 + `ITEM_TAKEN` 事件 + `set_flag` |
 | 9 | 回村口 | 再找老守卫：台词变成夸奖「你通过了试炼」 | 条件问候（按 `flag` 切换入口节点） |
 
 战斗数值（有意设计成新手能稳赢）：
 - 玩家铁剑 damage 10、攻击 5、防御 2、HP 50；史莱姆 HP 26、攻击 6、防御 1，普攻每击 9 伤。
-- **Beat 制战斗（阶段一原型 _proto_beatcombat，当前启用，取代旧的脱离/防御/先后手原型）**：
+- **Beat 制战斗（引擎模块 `engine/beat_combat.py`，本工程 `game_config.json` 的 `beat_combat` 块启用，
+  经典回合制与它由配置开关二选一）**：
   拍首亮明敌人意图 → 玩家选一个主动作 → 同拍结算。AP 开场 1、每拍 +1、上限 3、
   跨拍保留；攻击 1AP、格挡 0AP、闪避 2AP（确定免伤）、蓄力 0AP、脱离 2AP（条件式）。
   玩家蓄力：本拍不行动且不受伤→下一拍攻击化为重击 `(10+2−1)×2 = 22`（一拍过期、
@@ -59,11 +60,12 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
   ⑤ 玩家蓄力就绪且残血→撞击（重击必须能收头）
   ⑥ 自身 HP≤25% 且玩家未蓄力→蜷缩龟息
   ⑦ 否则按节奏 撞击→蓄力→(承诺重击) 三拍循环。
-  决策参数支持按敌人 `_proto_brain` 覆盖：`rhythm`（撞击/蓄力节奏环）、`frenzy_rhythm`
+  决策参数支持按敌人 `brain` 覆盖：`rhythm`（撞击/蓄力节奏环）、`frenzy_rhythm`
   （残血狂暴的更快节奏环）、`dodge_player_charge`（能否躲玩家重击）、
   `low_hp_mode`（brace 龟息 | frenzy 狂暴不蜷缩）、`low_hp_ratio`（残血阈值）；
   史莱姆未配置走上面默认。敌人还可覆盖 `heavy_attack`（重击伤害）、
-  `_proto_telegraphs`（动态征兆文案）、`_proto_intents`（看穿拍的动作说明）。
+  `telegraphs`（动态征兆文案）、`intents`（看穿拍的动作说明）——
+  这些字段都能在编辑器「敌人」页签的「Beat 战斗配置」里直接填。
   普通拍面不直接显示动作名，而是用由实际动作决定的动态词汇表描述史莱姆的姿态；同一动作
   按拍序轮换近义表述，玩家应从表现中判断其意图。重击被躲后的破绽拍会明确显示已看穿的动作，
   作为成功读招的奖励。决策器不改招，情报价值归玩家。玩家重击被躲→下一拍露破绽（仅提示）
@@ -72,25 +74,25 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
   不做 1HP 硬保底——留给以后装备/光环 buff）。
   胜利后弹出**战斗结算弹窗**：金币自动入账，掉落物点击拾取并弹出物品简介
   （描述取自 items.json 的 description）；不拾取可关闭，物品留在地上。
-  下一阶段候选：假动作；当前模糊征兆仍是《森林试炼》的阶段一原型，待试玩验证。
+  下一阶段候选：假动作。
 
-  **动作设计词典（阶段一小切片）**：`_proto_beatcombat.actions` 可定义动作的 `label`、
+  **动作设计词典（配置驱动）**：`beat_combat.actions` 可定义动作的 `label`、
   `description`、`cost`、`tag`。当前只接入攻击/格挡/闪避的按钮名称、说明和 AP 费用。
   这三个动作还可声明 `effects` 与 `interactions`：已验证 `weapon_damage`、`avoid_damage`、
   `miss`、`halve_damage_after_defense`、`interrupt` 和蓄力/非蓄力条件，配置会实际参与
-  伤害、格挡、闪避和打断结算。未声明时保留原型旧行为。
-  本轮还验证了状态生命周期：`charge.effects` 的 `apply_state` 添加 `readied`，
+  伤害、格挡、闪避和打断结算。未声明时保留引擎默认行为。
+  还支持状态生命周期：`charge.effects` 的 `apply_state` 添加状态名，
   `duration_beats` 控制状态到期拍，`attack` 的 `consume_state` 消费它，
-  `clear_state_on_damage` 在蓄力受伤时清除。当前 demo 保持 1 拍；冒烟另用 2 拍配置验证
-  状态确实能多保留一拍。蓄力和重击仍使用 demo 原型字段兼容存档；这仍不是引擎通用动作 API。
+  `clear_state_on_damage` 在蓄力受伤时清除。本 demo 保持 1 拍；
+  qa/m8 另用 2 拍配置验证状态确实能多保留一拍。
 - **石门守卫（Boss，洞穴深处）**：HP 60、攻击 7、防御 2、重击 12（格挡受 5）。
-  `_proto_brain`：节奏 **撞→撞→蓄力**（重击由承诺位打出，比史莱姆更压制）；
+  `brain`：节奏 **撞→撞→蓄力**（重击由承诺位打出，比史莱姆更压制）；
   石头躲不动玩家重击（`dodge_player_charge=false`，你蓄力它只能换血）；
   残血 ≤30% **狂暴**（`frenzy`：不蜷缩、节奏加速为 撞→蓄）。掉落 20 金币 +
   守卫核晶（纪念品，描述里留了钩子）。通关走查第 7 步。
-- 早期战斗原型（脱离 proto_retreat / 防御 proto_defend / 先后手 proto_turnorder）
-  代码保留但与 beat 开关互斥，beat 启用时其接口 409、冒烟自动 SKIP，待抽离批次统一处理。
-- 原型机制详见 `games/demo_minimal/proto_*.py`，均待试玩后抽离引擎。
+- 旧三原型（脱离/防御/先后手）已随 Beat 抽离批次删除；其行为并入 `engine/beat_combat.py`
+  （脱离=Beat 动作，恢复计时=`beat_combat.recover_seconds`）。旧存档的 `_proto_*`
+  状态键在读档时自动迁移为正式键。回归见 `qa/m8_beat_combat.py`。
 
 控制台快速验证分支（不用真打）：`reset` → `set_flag demo_complete` → 立刻回村找守卫看夸奖；
 `teleport forest` → `set_flag` / `give rusty_key` 测试锁门。
@@ -102,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
 | `game_config.json` | 标题/简介/出生点/初始背包金币/玩家属性 + 2 条事件规则 | 事件只在**新会话**装配，改完要 reset |
 | `scenes.json` | village / forest / cave | 出口是**单向**的，要双向得两边互写；锁门写 `locked_exits`，解锁靠事件 |
 | `items.json` | 铁剑 / 药水 / 钥匙 / 金币 | 武器 `is_weapon+damage`；消耗品 `usable+heal`；货币要 `is_currency+currency_value` |
-| `enemies.json` | slime / stone_guard（Boss）两只 | `reward_items` 击杀落在地上，`reward_gold` 直接加钱；`heavy_attack`/`_proto_brain`/`_proto_telegraphs`/`_proto_intents` 为 beat 战斗的敌人级覆盖 |
+| `enemies.json` | slime / stone_guard（Boss）两只 | `reward_items` 击杀落在地上，`reward_gold` 直接加钱；`heavy_attack`/`brain`/`telegraphs`/`intents` 为 beat 战斗的敌人级覆盖（编辑器敌人页签可配） |
 | `npc_dialogues.json` | old_guard：greet / prep / after_victory / leave | `greeting_rules` 按序首匹配；flag 满足时入口切到 after_victory |
 
 两条事件规则串起任务线：

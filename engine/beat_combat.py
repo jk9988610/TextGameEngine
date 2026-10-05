@@ -1,70 +1,54 @@
 # -*- coding: utf-8 -*-
-# PROTOTYPE-GAME：Beat 制战斗（AP+意图） —— 待试玩验证后抽离，勿当通用API
-#
-# 《森林试炼》专用的战斗 2.0 阶段一原型（两阶段开发纪律，见
-# .trae/documents/ai_handoff_game_extension.md §3）。它是"拳击式预判"讨论的
-# 首版切片，启用后与旧三原型（脱离/防御/先后手）开关互斥，旧代码保留可回退。
-#
-# 一拍（Beat）流程：
-#   拍首敌人意图明牌 → 玩家选一个主动作（攻/格挡/闪避/脱离）→ 同时结算
-#   → 拍末 AP+1。AP 开场 1、每拍 +1、上限 3、跨拍保留，同一拍只能选一个动作。
-#
-# 动作费用与效果（demo，每拍只能选一个主动作）：
-#   攻击 1AP：武器伤害 9；敌人蜷缩时 0 伤害；对攻/重击拍 = 换血吃全额
-#   格挡 0AP（占拍）：撞击减半 4→2；重击不减半，吃全额 10；蜷缩无事
-#   闪避 2AP：撞击/重击完全免伤；蜷缩拍 = AP 白花
-#   蓄力 0AP（占拍）：本拍不行动且无防护；未受伤→获得「蓄力就绪」（只保留下一拍），
-#       受伤→蓄力被打断。下一拍攻击 = 重击 (武器+2−敌防)×2 = 22；重击克制防御
-#       （敌人蜷缩也吃全额），只能被闪避躲；下一拍不攻击则蓄力清空，不可叠加
-#   脱离 2AP：本拍未受伤才成功（敌人蜷缩/蓄力等不出手的拍子是窗口）；
-#       在敌人攻击拍脱离 = 吃全额且失败、AP 照扣（不掷骰、不必定成功）
-#
-# 敌人动作（L2 决策器每拍拍首锁定，候选集与玩家结算规则同源）：
-#   撞击 bash（4 伤/格挡 2）、蓄力 charge（不出手，下拍承诺重击）、
-#   重击 heavy（10/格挡 4/闪避 0）、蜷缩 brace（不出手，普攻无效）、
-#   喘息 recover（蓄力被打断后的当拍，不出手、可被正常攻击）、
-#   闪避 dodge（不出手；玩家本拍攻击/重击落空；下一拍承诺撞击）。
-# 决策优先级（纯函数，只看拍首公开状态，不偷看玩家本拍选择）：
-#   ① 上拍蓄力成功 → 承诺 heavy（不可取消；互蓄对撞仍走这条）
-#   ② 上拍蓄力被打断 → recover
-#   ③ 上拍闪避成功 → 承诺 bash（不可取消；防「互蓄/再蓄力→再闪避」死循环）
-#   ④ 玩家「蓄力就绪」→ 能躲的敌人：残血 bash（重击必须能收头）否则 dodge；
-#      躲不动的敌人（石头类）只能 bash 换血
-#   ⑤ 自身 HP ≤ 阈值且玩家未蓄力 → 按性格：brace（龟息）或 frenzy（狂暴：
-#      不蜷缩，节奏切换为更快的 frenzy_rhythm）
-#   ⑥ 否则按节奏步循环 _proto_brain.rhythm（重击由承诺位打出）
-#   决策参数按敌人数据 `_proto_brain` 配置：rhythm / frenzy_rhythm /
-#   dodge_player_charge / low_hp_mode(brace|frenzy) / low_hp_ratio；
-#   未配置的敌人（史莱姆）走默认：bash→charge、会躲重击、残血龟息。
-#   破绽拍决策器不改招——情报价值归玩家。
-#
-# 两个一拍状态：
-#   破绽：重击被闪避 → 重击者下一拍动作被看穿（只给拍面提示，无数值增益）。
-#         玩家重击被躲 → 额外承诺敌人下一拍撞击（这是闪避的机械惩罚）。
-#   挣扎：脱离失败（本拍受伤）→ 下一拍闪避/脱离消耗 -1，不叠加、不用即过期，
-#         不突破 AP 上限。
-#
-# 状态（随存档走）：
-#   game_state["_proto_ap"]                 —— 当前 AP
-#   current_battle["_proto_beat"]           —— 本场交战的拍序号（1 起，接战重置）
-#   current_battle["_proto_charge"]         —— "readied"=蓄力就绪（仅下一拍有效），否则 None
-#   current_battle["_proto_enemy_flaw_beat"]—— 敌人破绽生效的拍序号（重击被闪避后的下一拍）
-#   current_battle["_proto_player_flaw_beat"]—— 玩家破绽生效的拍序号（重击被躲开后的下一拍）
-#   current_battle["_proto_struggle_beat"]  —— 玩家挣扎生效的拍序号（脱离失败后的下一拍）
-#   current_battle["_proto_enemy_step"]     —— 敌人节奏步下标（循环 _proto_brain.rhythm）
-#   current_battle["_proto_enemy_promised"]—— True=上拍蓄力成功，本拍承诺重击
-#   current_battle["_proto_enemy_promised_bash"] —— True=上拍闪避，本拍承诺撞击
-#   current_battle["_proto_enemy_interrupted"] —— 上拍蓄力被玩家攻击打断，本拍喘息
-#   game_state["_proto_detached_at"]        —— 脱离时刻（与 proto_retreat 同一数据
-#       契约键，app.py 的 tick_recover 原样为两者服务；阶段二统一删除）
-#
-# 隔离：不 import engine 与其它原型；击杀结算复制自 combat_system.player_attack
-# （与 proto_turnorder 同口径），阶段二随统一战斗器整体删除。
-"""Beat 制战斗原型（《森林试炼》专用，阶段一）。"""
+"""
+Beat 制战斗（引擎模块）—— 拍制（Beat）AP+意图 战斗，从《森林试炼》原型抽离。
+
+一拍（Beat）流程：
+  拍首敌人意图明牌（普通拍给模糊征兆，破绽拍才点名）→ 玩家选一个主动作
+  → 同拍同时结算 → 拍末 AP 回复。AP 开场 1、每拍 +1、上限 3、跨拍保留，
+  同一拍只能选一个主动作。
+
+配置（工程 game_config.json 的 "beat_combat" 块；未启用/缺失时全部接口安全降级）：
+  enabled / ap_start / ap_per_beat / ap_max / heavy_damage / low_hp_ratio /
+  player_heavy_bonus / player_heavy_mult / recover_seconds（脱离休整秒数）
+  actions{attack/charge/block/dodge/disengage}：label/description/tag/cost +
+    effects（weapon_damage/apply_state/avoid_damage）+
+    interactions（miss/interrupt/halve_damage_after_defense，支持
+    charged/not_charged/hit 条件）——动作与克制关系完全由配置声明。
+
+敌人数据字段（enemies.json，全部可选）：
+  heavy_attack            —— 重击伤害（缺省用配置 heavy_damage）
+  brain                   —— 决策器参数：rhythm / frenzy_rhythm /
+                             dodge_player_charge / low_hp_mode(brace|frenzy) /
+                             low_hp_ratio（未配置走引擎默认：bash→charge、
+                             会躲重击、残血龟息）
+  telegraphs              —— {intent: [模糊征兆文案...]}，覆盖引擎默认叙述
+  intents                 —— {intent: [名称, 提示]}，破绽拍/点名时显示
+
+状态（随存档走；旧 _proto_* 键由 migrate_state 在读档时迁移）：
+  game_state["beat_ap"]            —— 当前 AP
+  game_state["detached_at"]        —— 脱离时刻 game_time（脱离休整中）
+  current_battle["beat"]           —— 本场交战的拍序号（1 起，接战重置）
+  current_battle["charge"]         —— 蓄力状态名（如 "readied"），None=无
+  current_battle["charge_expires"] —— 蓄力到期拍（含），过期即清
+  current_battle["enemy_step"]     —— 敌人节奏步下标（循环 brain.rhythm）
+  current_battle["enemy_promised"]       —— True=上拍蓄力成功，本拍承诺重击
+  current_battle["enemy_promised_bash"]  —— True=上拍闪避，本拍承诺撞击
+  current_battle["enemy_interrupted"]    —— 上拍蓄力被打断，本拍喘息
+  current_battle["enemy_flaw_beat"]      —— 敌人破绽生效的拍序号
+  current_battle["player_flaw_beat"]     —— 玩家破绽生效的拍序号
+  current_battle["struggle_beat"]        —— 玩家挣扎生效的拍序号
+
+边界：不 import app.py；经注入的 combat_system 公开接口（publish /
+settle_kill / handle_player_death / end_battle）操作事件与结算，
+不直接触碰其内部字段。
+"""  # noqa: RUF002
 from typing import Any, Dict, Optional
 
-CONFIG_KEY = "_proto_beatcombat"
-DETACH_KEY = "_proto_detached_at"   # 与 proto_retreat 共用的数据契约键
+CONFIG_KEY = "beat_combat"
+AP_KEY = "beat_ap"
+DETACH_KEY = "detached_at"   # 脱离时刻的 game_time；键不存在=未脱离
+
+ACTIONS = ("attack", "block", "dodge", "charge", "disengage")
 
 INTENT_TEXT = {
     "bash": ("撞击", "这一拍它会撞过来"),
@@ -74,10 +58,9 @@ INTENT_TEXT = {
     "recover": ("喘息", "蓄力被你打散，这一拍它毫无防备，不会出手"),
     "dodge": ("闪避", "这一拍它会躲开攻击——重击也会落空，它本拍不会出手"),
 }
-ACTIONS = ("attack", "block", "dodge", "charge", "disengage")
 
-# PROTOTYPE-GAME：模糊征兆 —— 待试玩验证后抽离，勿当通用API
-# 普通拍面只给动态叙述，不直接显示 intent 名；按拍序确定性轮换，方便复盘和测试。
+# 模糊征兆：普通拍面只给动态叙述，不直接显示 intent 名；按拍序确定性轮换，
+# 方便复盘和测试。敌人可用 telegraphs 覆盖。
 TELEGRAPH_TEXT = {
     "bash": (
         "它压低身子，四肢猛地蹬紧，像一块弹簧一样逼近。",
@@ -105,10 +88,40 @@ TELEGRAPH_TEXT = {
     ),
 }
 
+# ---------- 旧原型存档键迁移（幂等） ----------
+_LEGACY_STATE_KEYS = {
+    "_proto_ap": AP_KEY,
+    "_proto_detached_at": DETACH_KEY,
+}
+_LEGACY_BATTLE_KEYS = {
+    "_proto_beat": "beat",
+    "_proto_charge": "charge",
+    "_proto_charge_expires": "charge_expires",
+    "_proto_enemy_step": "enemy_step",
+    "_proto_enemy_promised": "enemy_promised",
+    "_proto_enemy_promised_bash": "enemy_promised_bash",
+    "_proto_enemy_interrupted": "enemy_interrupted",
+    "_proto_enemy_flaw_beat": "enemy_flaw_beat",
+    "_proto_player_flaw_beat": "player_flaw_beat",
+    "_proto_struggle_beat": "struggle_beat",
+}
+
+
+def migrate_state(state: Dict) -> None:
+    """把旧原型存档（_proto_* 键）迁移为正式键；幂等，读档/接管会话时调用。"""
+    for old, new in _LEGACY_STATE_KEYS.items():
+        if old in state:
+            state.setdefault(new, state.pop(old))
+    battle = state.get("current_battle")
+    if isinstance(battle, dict):
+        for old, new in _LEGACY_BATTLE_KEYS.items():
+            if old in battle:
+                battle.setdefault(new, battle.pop(old))
+
 
 def telegraph(intent: str, beat: int, enemy: Optional[Dict] = None) -> str:
-    """按拍序给同一动作选择稳定的近义动态描述；敌人可用 _proto_telegraphs 覆盖。"""
-    phrases = ((enemy or {}).get("_proto_telegraphs") or {}).get(intent) \
+    """按拍序给同一动作选择稳定的近义动态描述；敌人可用 telegraphs 覆盖。"""
+    phrases = ((enemy or {}).get("telegraphs") or {}).get(intent) \
         or TELEGRAPH_TEXT.get(intent, ("它的动作让你暂时无法判断。",))
     return phrases[(max(1, int(beat)) - 1) % len(phrases)]
 
@@ -130,23 +143,23 @@ def init_engagement(state: Dict, data: Dict) -> None:
     cfg = beat_config(data)
     if not cfg:
         return
-    state["_proto_ap"] = int(cfg.get("ap_start", 1))
+    state[AP_KEY] = int(cfg.get("ap_start", 1))
     battle = state.get("current_battle")
     if battle:
-        battle["_proto_beat"] = 1
-        battle["_proto_charge"] = None          # 每次接战清空蓄力（含残血续战）
-        battle.pop("_proto_charge_expires", None)
-        battle["_proto_enemy_step"] = 0         # 敌人节奏从撞击开始
-        battle["_proto_enemy_promised"] = False
-        battle["_proto_enemy_promised_bash"] = False
-        battle["_proto_enemy_interrupted"] = False
-        battle.pop("_proto_enemy_flaw_beat", None)
-        battle.pop("_proto_player_flaw_beat", None)
-        battle.pop("_proto_struggle_beat", None)
+        battle["beat"] = 1
+        battle["charge"] = None              # 每次接战清空蓄力（含残血续战）
+        battle.pop("charge_expires", None)
+        battle["enemy_step"] = 0             # 敌人节奏从撞击开始
+        battle["enemy_promised"] = False
+        battle["enemy_promised_bash"] = False
+        battle["enemy_interrupted"] = False
+        battle.pop("enemy_flaw_beat", None)
+        battle.pop("player_flaw_beat", None)
+        battle.pop("struggle_beat", None)
 
 
 def _action_def(cfg: Dict, action: str) -> Dict[str, Any]:
-    """读取 demo 内动作词典；旧 cost_* 字段作为兼容兜底。"""
+    """读取动作词典；旧 cost_* 字段作为兼容兜底。"""
     raw = (cfg.get("actions") or {}).get(action)
     return raw if isinstance(raw, dict) else {}
 
@@ -201,7 +214,7 @@ def _interaction_enabled(cfg: Dict, action: str, opponent_action: str,
 
 
 def _weapon_damage(cfg: Dict, weapon: Dict, enemy: Dict, charged: bool) -> int:
-    """按攻击动作的 weapon_damage 声明结算；无声明时沿用原型公式。"""
+    """按攻击动作的 weapon_damage 声明结算；无声明时沿用引擎默认公式。"""
     effects = _action_def(cfg, "attack").get("effects")
     effect = next((e for e in effects or []
                    if isinstance(e, dict) and e.get("type") == "weapon_damage"), None)
@@ -241,10 +254,12 @@ def _charge_apply_effect(cfg: Dict) -> Optional[Dict]:
 
 def _charge_is_ready(cfg: Dict, battle: Dict, beat: int) -> bool:
     """状态在到期拍结束前有效；旧存档没有到期拍时按旧 readied 兼容。"""
-    if battle.get("_proto_charge") != _charge_state_name(cfg):
+    if battle.get("charge") != _charge_state_name(cfg):
         return False
-    expires = battle.get("_proto_charge_expires")
-    return expires is None or int(beat) <= int(expires)
+    expires = battle.get("charge_expires")
+    if expires is None:
+        return True
+    return beat <= int(expires)
 
 
 def _charge_duration(cfg: Dict) -> int:
@@ -260,7 +275,7 @@ def _attack_consumes_charge(cfg: Dict) -> bool:
 
 
 def _avoids_damage(cfg: Dict, action: str, intent: str) -> bool:
-    """由动作效果声明该动作能否规避指定敌人动作；未配置沿用旧闪避行为。"""
+    """由动作效果声明该动作能否规避指定敌人动作；未配置沿用默认闪避行为。"""
     effect = _effect_declared(cfg, action, "avoid_damage")
     if effect is None:
         return action == "dodge"
@@ -270,23 +285,22 @@ def _avoids_damage(cfg: Dict, action: str, intent: str) -> bool:
 def _effective_cost(cfg: Dict, battle: Dict, action: str, beat: int) -> int:
     """挣扎生效拍：闪避/脱离消耗 -1；其余保持。不会低于 0。"""
     cost = _cost(cfg, action)
-    if (battle.get("_proto_struggle_beat") == beat
-            and action in ("dodge", "disengage")):
+    if battle.get("struggle_beat") == beat and action in ("dodge", "disengage"):
         return max(0, cost - 1)
     return cost
 
 
 def _low_hp(cfg: Dict, enemy: Dict, battle: Dict) -> bool:
-    """敌人是否进入残血区间；阈值可被 _proto_brain.low_hp_ratio 覆盖。"""
+    """敌人是否进入残血区间；阈值可被 brain.low_hp_ratio 覆盖。"""
     max_hp = int(enemy.get("hp", 1))
-    raw = enemy.get("_proto_brain") or {}
+    raw = enemy.get("brain") or {}
     ratio = float(raw.get("low_hp_ratio", cfg.get("low_hp_ratio", 0.25)))
     return int(battle.get("enemy_hp", max_hp)) <= max_hp * ratio
 
 
 def _rhythm(cfg: Dict, enemy: Dict, battle: Dict) -> list:
     """敌人节奏环（bash/charge 序列，重击由承诺位打出）；残血狂暴可换更快的环。"""
-    raw = enemy.get("_proto_brain") or {}
+    raw = enemy.get("brain") or {}
     if (raw.get("low_hp_mode") == "frenzy" and raw.get("frenzy_rhythm")
             and _low_hp(cfg, enemy, battle)):
         return list(raw["frenzy_rhythm"])
@@ -294,20 +308,20 @@ def _rhythm(cfg: Dict, enemy: Dict, battle: Dict) -> list:
 
 
 def decide(cfg: Dict, battle: Dict, state: Dict, enemy: Dict) -> str:
-    """L2 决策器：拍首纯函数，锁定敌人本拍动作。只读拍首状态，不接收玩家本拍
+    """拍首决策器：纯函数，锁定敌人本拍动作。只读拍首状态，不接收玩家本拍
     选择（AI 不得偷看改招）；无随机，同局面结果恒定。返回 INTENT_TEXT 的键。
-    行为参数来自敌人 _proto_brain（未配置走史莱姆默认）。"""
-    raw = enemy.get("_proto_brain") or {}
+    行为参数来自敌人 brain（未配置走默认）。破绽拍决策器不改招——情报价值归玩家。"""
+    raw = enemy.get("brain") or {}
     # ① 承诺：上拍蓄力成功且没被打断 → 重击必须打出
-    if battle.get("_proto_enemy_promised"):
+    if battle.get("enemy_promised"):
         return "heavy"
     # ② 上拍蓄力被打断 → 本拍喘息
-    if battle.get("_proto_enemy_interrupted"):
+    if battle.get("enemy_interrupted"):
         return "recover"
     # ③ 上拍闪避 → 承诺撞击（不可再躲）
-    if battle.get("_proto_enemy_promised_bash"):
+    if battle.get("enemy_promised_bash"):
         return "bash"
-    player_charged = _charge_is_ready(cfg, battle, int(battle.get("_proto_beat", 1)))
+    player_charged = _charge_is_ready(cfg, battle, int(battle.get("beat", 1)))
     low_hp = _low_hp(cfg, enemy, battle)
     # ④ 玩家蓄力就绪：能躲的敌人躲开重击（残血不躲，否则杀不死）；
     #    躲不动的敌人（石头类）只能换血反制
@@ -318,9 +332,9 @@ def decide(cfg: Dict, battle: Dict, state: Dict, enemy: Dict) -> str:
     # ⑤ 残血：龟息性格蜷缩挡普攻；狂暴性格不蜷缩，节奏交给（更快的）环
     if low_hp and raw.get("low_hp_mode", "brace") != "frenzy":
         return "brace"
-    # ⑥ 节奏步：循环 _proto_brain.rhythm（重击由承诺位打出）
+    # ⑥ 节奏步：循环 brain.rhythm（重击由承诺位打出）
     rhythm = _rhythm(cfg, enemy, battle)
-    return rhythm[int(battle.get("_proto_enemy_step", 0)) % len(rhythm)]
+    return rhythm[int(battle.get("enemy_step", 0)) % len(rhythm)]
 
 
 def describe(state: Dict, data: Dict) -> Optional[Dict]:
@@ -330,20 +344,20 @@ def describe(state: Dict, data: Dict) -> Optional[Dict]:
         return None
     battle, enemy = _battle_enemy(state, data)
     if not battle or not enemy:
-        return {"enabled": True, "ap": int(state.get("_proto_ap", cfg.get("ap_start", 1))),
+        return {"enabled": True, "ap": int(state.get(AP_KEY, cfg.get("ap_start", 1))),
                 "ap_max": int(cfg.get("ap_max", 3)), "in_battle": False}
     if state.get(DETACH_KEY) is not None:
-        return {"enabled": True, "ap": int(state.get("_proto_ap", 0)),
+        return {"enabled": True, "ap": int(state.get(AP_KEY, 0)),
                 "ap_max": int(cfg.get("ap_max", 3)), "in_battle": False, "detached": True}
-    beat = int(battle.get("_proto_beat", 1))
+    beat = int(battle.get("beat", 1))
     intent = decide(cfg, battle, state, enemy)
     label, hint = INTENT_TEXT.get(intent, (intent, ""))
-    override = (enemy.get("_proto_intents") or {}).get(intent)
+    override = (enemy.get("intents") or {}).get(intent)
     if isinstance(override, (list, tuple)) and len(override) == 2:
         label, hint = override
-    flaw = battle.get("_proto_enemy_flaw_beat") == beat
-    player_flaw = battle.get("_proto_player_flaw_beat") == beat
-    struggle = battle.get("_proto_struggle_beat") == beat
+    flaw = battle.get("enemy_flaw_beat") == beat
+    player_flaw = battle.get("player_flaw_beat") == beat
+    struggle = battle.get("struggle_beat") == beat
     hidden_hint = telegraph(intent, beat, enemy)
     if flaw:
         hidden_hint = f"你看穿了它的动作：{label}。{hint}"
@@ -351,7 +365,7 @@ def describe(state: Dict, data: Dict) -> Optional[Dict]:
         hidden_hint = "你上一拍重击落空、重心不稳：" + hidden_hint
     return {
         "enabled": True, "in_battle": True,
-        "ap": int(state.get("_proto_ap", cfg.get("ap_start", 1))),
+        "ap": int(state.get(AP_KEY, cfg.get("ap_start", 1))),
         "ap_max": int(cfg.get("ap_max", 3)),
         "beat": beat,
         "charged": _charge_is_ready(cfg, battle, beat),
@@ -373,42 +387,9 @@ def _player_stats(state: Dict) -> Dict[str, int]:
             "defense": int(state.get("player_defense", 2))}
 
 
-def _kill_resolve(combat_system, state: Dict, data: Dict, battle: Dict,
-                  enemy: Dict, response: Dict[str, Any]) -> None:
-    """玩家击杀结算（复制自 combat_system.player_attack 击杀段）。
-    同时下发结构化 rewards 供前端战斗结算弹窗渲染（金币自动入账，
-    物品落在当前场景地上，由玩家在弹窗中点击拾取）。"""
-    response["log"].append(f"【{enemy['name']}】被你打倒了！")
-    combat_system._bus.publish("COMBAT_DEATH", dead=enemy["id"])
-    combat_system._bus.publish("ENEMY_KILLED", enemy_id=enemy["id"])
-    state.setdefault("killed_enemies", [])
-    if enemy["id"] not in state["killed_enemies"]:
-        state["killed_enemies"].append(enemy["id"])
-    current_scene = state["current_scene"]
-    reward_items = []
-    for item_id in enemy.get("reward_items", []):
-        state.setdefault("scene_item_states", {}).setdefault(current_scene, []).append(item_id)
-        item_data = data["items"][item_id]
-        reward_items.append({"id": item_id, "name": item_data["name"],
-                             "description": item_data.get("description", "")})
-        response["log"].append(f"战利品掉落：【{item_data['name']}】出现在地上！")
-    reward_gold = int(enemy.get("reward_gold", 0))
-    if reward_gold > 0:
-        state["player_gold"] = state.get("player_gold", 0) + reward_gold
-        response["log"].append(
-            f"战利品：金币 +{reward_gold}（当前金币：{state['player_gold']}）")
-    combat_system.end_battle()
-    state.pop(DETACH_KEY, None)
-    response["victory"] = {
-        "enemy": enemy.get("name", enemy["id"]),
-        "gold": reward_gold,
-        "items": reward_items,
-    }
-
-
 def _enemy_damage_taken(cfg: Dict, action: str, intent: str, state: Dict,
                         enemy: Dict) -> int:
-    """按动作 effects/interactions 计算玩家本拍承伤；未配置时兼容旧公式。"""
+    """按动作 effects/interactions 计算玩家本拍承伤；未配置时兼容默认公式。"""
     if intent in ("brace", "charge", "recover", "dodge"):
         return 0
     heavy = int(enemy.get("heavy_attack", cfg.get("heavy_damage", 10)))
@@ -469,45 +450,45 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
         response["message"] = "你眼下不在战斗中"
         return response
 
-    beat = int(battle.get("_proto_beat", 1))
+    beat = int(battle.get("beat", 1))
     # 拍首锁定：本拍敌人动作由决策器一次性决定，拍内状态变化不再改招
     player_charged_at_lock = (_charge_is_ready(cfg, battle, beat)
                               and _attack_consumes_charge(cfg))
     intent = decide(cfg, battle, state, enemy)
-    ap = int(state.get("_proto_ap", 0))
+    ap = int(state.get(AP_KEY, 0))
     cost = _effective_cost(cfg, battle, action, beat)
     if ap < cost:
         base = _cost(cfg, action)
         hint = "（挣扎折扣后仍不足）" if cost != base else ""
         response["message"] = f"行动力不足{hint}（需要 {cost}，当前 {ap}）"
         return response
-    state["_proto_ap"] = ap - cost
+    state[AP_KEY] = ap - cost
     enemy_name = enemy.get("name", enemy["id"])
 
-    # 状态生命周期由 charge.apply_state / attack.consume_state 声明；未声明时兼容旧字段。
-    charge_state = _charge_state_name(cfg)
+    # 状态生命周期由 charge.apply_state / attack.consume_state 声明；未声明时兼容默认。
     readied = (_charge_is_ready(cfg, battle, beat)
                and (action != "attack" or _attack_consumes_charge(cfg)))
-    if action != "charge" and action == "attack" and _attack_consumes_charge(cfg):
-        battle["_proto_charge"] = None
-        battle.pop("_proto_charge_expires", None)
+    if action == "attack" and _attack_consumes_charge(cfg):
+        battle["charge"] = None
+        battle.pop("charge_expires", None)
 
     # 承诺/打断标记在本拍锁定后即视为消费（下一拍状态由拍末推进重新设定）
-    battle["_proto_enemy_promised"] = False
-    battle["_proto_enemy_promised_bash"] = False
+    battle["enemy_promised"] = False
+    battle["enemy_promised_bash"] = False
 
     # ---------- 玩家进攻（先结算数值，伤害与敌人同时生效，不因击杀提前结束）----------
     p_damage = 0
     damage_logged = False
     charge_interrupted = False
+    weapon = {}
     if action == "attack":
         weapon = (data.get("items") or {}).get(weapon_id, {})
         if weapon_id not in state.get("player_inventory", []):
-            state["_proto_ap"] = ap   # 校验失败退还 AP
+            state[AP_KEY] = ap   # 校验失败退还 AP
             response["message"] = f"你没有【{weapon.get('name', weapon_id)}】"
             return response
         if not weapon.get("is_weapon"):
-            state["_proto_ap"] = ap
+            state[AP_KEY] = ap
             response["message"] = f"【{weapon.get('name', weapon_id)}】不是武器"
             return response
         # 闪避躲过一切攻击（含重击）；普攻打不动蜷缩；重击克制蜷缩。
@@ -520,7 +501,7 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
                     response["log"].append(
                         f"你全力砸出的重击被【{enemy_name}】侧身躲开，一击落空！"
                         "用力过猛让你下一拍露出破绽。")
-                    battle["_proto_player_flaw_beat"] = beat + 1
+                    battle["player_flaw_beat"] = beat + 1
                 else:
                     response["log"].append(
                         f"【{enemy_name}】身形一晃，你的攻击落了空！")
@@ -542,8 +523,8 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
             else:
                 response["log"].append(
                     f"你用【{weapon['name']}】对【{enemy_name}】造成 **{p_damage}** 点伤害！")
-            combat_system._bus.publish("COMBAT_DAMAGE",
-                                       attacker="player", defender=enemy["id"], damage=p_damage)
+            combat_system.publish("COMBAT_DAMAGE",
+                                  attacker="player", defender=enemy["id"], damage=p_damage)
             damage_logged = True
             if intent == "charge":
                 charge_interrupted = _interaction_enabled(
@@ -553,8 +534,8 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
     if action == "attack" and p_damage > 0 and not damage_logged:
         response["log"].append(
             f"你用【{weapon['name']}】对【{enemy_name}】造成 **{p_damage}** 点伤害！")
-        combat_system._bus.publish("COMBAT_DAMAGE",
-                                   attacker="player", defender=enemy["id"], damage=p_damage)
+        combat_system.publish("COMBAT_DAMAGE",
+                              attacker="player", defender=enemy["id"], damage=p_damage)
         if intent == "charge":
             charge_interrupted = _interaction_enabled(
                 cfg, "attack", "charge", "interrupt", {"charged": readied, "hit": True}) is not False
@@ -594,7 +575,7 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
         if action == "dodge":
             response["log"].append(
                 f"【{enemy_name}】的重击轰然落空，你毫发无伤！它用力过猛露出破绽，下一拍的动作你将一目了然。")
-            battle["_proto_enemy_flaw_beat"] = beat + 1
+            battle["enemy_flaw_beat"] = beat + 1
         elif action == "block":
             response["log"].append(f"你勉强架住重击，防御力卸掉大半劲道，受到 **{taken}** 点伤害！")
         elif action == "charge":
@@ -620,21 +601,23 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
     new_hp = int(state.get("player_hp", 0)) - taken
     state["player_hp"] = new_hp
     if taken > 0:
-        combat_system._bus.publish("COMBAT_DAMAGE",
-                                   attacker=enemy["id"], defender="player", damage=taken)
+        combat_system.publish("COMBAT_DAMAGE",
+                              attacker=enemy["id"], defender="player", damage=taken)
 
     enemy_dead = battle["enemy_hp"] <= 0 and p_damage > 0
     player_dead = new_hp <= 0
 
     if enemy_dead:
-        _kill_resolve(combat_system, state, data, battle, enemy, response)
+        victory = combat_system.settle_kill(response)
+        state.pop(DETACH_KEY, None)
         response["defeated"] = enemy["id"]
+        response["victory"] = victory
     if player_dead:
-        combat_system._bus.publish("COMBAT_DEATH", dead="player")
-        combat_system._handle_player_death(response)
+        combat_system.publish("COMBAT_DEATH", dead="player")
+        combat_system.handle_player_death(response)
     if enemy_dead:
         response["success"] = True
-        response["ap"] = state["_proto_ap"]
+        response["ap"] = state[AP_KEY]
         response["charged"] = False
         # 同归于尽：不做 1HP 硬保底（留给以后装备/光环 buff），按惨胜处理——
         # 敌人掉落照常、玩家回酒馆满血复活
@@ -653,18 +636,18 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
             response["success"] = True
             response["fled"] = True
             response["message"] = "你抓住空隙，成功脱离了战斗。"
-            response["ap"] = state["_proto_ap"]
+            response["ap"] = state[AP_KEY]
             response["charged"] = False
             return response
-        battle["_proto_struggle_beat"] = beat + 1
+        battle["struggle_beat"] = beat + 1
         response["log"].append(
             "你被攻击缠住，没能脱离。挣扎之间你调整了脚步——下一拍闪避或脱离少花 1 点行动力。")
         response["message"] = "脱离失败！敌人的攻击缠住了你。"
     elif action == "charge":
         charge_effect = _charge_apply_effect(cfg)
         if taken == 0:
-            battle["_proto_charge"] = (charge_effect or {}).get("state", "readied")
-            battle["_proto_charge_expires"] = beat + _charge_duration(cfg)
+            battle["charge"] = (charge_effect or {}).get("state", "readied")
+            battle["charge_expires"] = beat + _charge_duration(cfg)
             preview = _heavy_preview(cfg, state, data, enemy)
             response["log"].append(
                 f"蓄力完成！下一拍选择攻击，将打出 **{preview}** 点重击。")
@@ -672,59 +655,107 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
         else:
             clear_on_damage = (charge_effect or {}).get("clear_state_on_damage", True)
             if clear_on_damage:
-                battle["_proto_charge"] = None
-                battle.pop("_proto_charge_expires", None)
+                battle["charge"] = None
+                battle.pop("charge_expires", None)
             response["log"].append("蓄力被打断了，下一拍的攻击没有加成。")
             response["message"] = "蓄力被打断"
 
     # ---------- 拍末：敌人节奏推进（决策状态机的唯一写入点）----------
-    battle["_proto_enemy_interrupted"] = False
+    battle["enemy_interrupted"] = False
     if intent == "charge":
         if p_damage > 0 and charge_interrupted:
             # 蓄力拍被攻击命中 → 下拍喘息，节奏从头再来
-            battle["_proto_enemy_interrupted"] = True
-            battle["_proto_enemy_step"] = 0
+            battle["enemy_interrupted"] = True
+            battle["enemy_step"] = 0
         else:
             # 蓄力成功 → 下拍承诺重击（不可取消）
-            battle["_proto_enemy_promised"] = True
+            battle["enemy_promised"] = True
     elif intent == "dodge":
         # 闪避成功 → 下拍承诺撞击（不可再躲）
-        battle["_proto_enemy_promised_bash"] = True
+        battle["enemy_promised_bash"] = True
     elif intent in ("heavy", "recover"):
-        battle["_proto_enemy_step"] = 0
+        battle["enemy_step"] = 0
     elif intent == "bash" and not player_charged_at_lock:
         # 节奏内的撞击（非"玩家蓄力"临时反制）→ 推进到环内下一格
         rhythm = _rhythm(cfg, enemy, battle)
-        battle["_proto_enemy_step"] = (int(battle.get("_proto_enemy_step", 0)) + 1) % len(rhythm)
+        battle["enemy_step"] = (int(battle.get("enemy_step", 0)) + 1) % len(rhythm)
     # brace 与临时 bash 不推进节奏步
 
     # ---------- 拍末：推进拍序号、AP 回复、过期一拍状态清理 ----------
     next_beat = beat + 1
     # 破绽/挣扎都只在"下一拍"生效；过期（如连续脱离失败只保留最近一次，不叠加）
-    if battle.get("_proto_enemy_flaw_beat") not in (None, next_beat):
-        battle.pop("_proto_enemy_flaw_beat", None)
-    if battle.get("_proto_player_flaw_beat") not in (None, next_beat):
-        battle.pop("_proto_player_flaw_beat", None)
-    if (battle.get("_proto_charge") is not None
-            and battle.get("_proto_charge_expires") is not None
-            and next_beat > int(battle["_proto_charge_expires"])):
-        battle["_proto_charge"] = None
-        battle.pop("_proto_charge_expires", None)
-    if battle.get("_proto_struggle_beat") not in (None, next_beat):
-        battle.pop("_proto_struggle_beat", None)
-    battle["_proto_beat"] = next_beat
+    if battle.get("enemy_flaw_beat") not in (None, next_beat):
+        battle.pop("enemy_flaw_beat", None)
+    if battle.get("player_flaw_beat") not in (None, next_beat):
+        battle.pop("player_flaw_beat", None)
+    if (battle.get("charge") is not None
+            and battle.get("charge_expires") is not None
+            and next_beat > int(battle["charge_expires"])):
+        battle["charge"] = None
+        battle.pop("charge_expires", None)
+    if battle.get("struggle_beat") not in (None, next_beat):
+        battle.pop("struggle_beat", None)
+    battle["beat"] = next_beat
     ap_max = int(cfg.get("ap_max", 3))
-    state["_proto_ap"] = min(ap_max, state["_proto_ap"] + int(cfg.get("ap_per_beat", 1)))
+    state[AP_KEY] = min(ap_max, state[AP_KEY] + int(cfg.get("ap_per_beat", 1)))
 
     response["success"] = True
     if not response["message"]:
         response["message"] = "回合结束"
     response["player"] = _player_stats(state)
-    response["ap"] = state["_proto_ap"]
-    response["beat"] = battle["_proto_beat"]
-    response["charged"] = _charge_is_ready(cfg, battle, battle["_proto_beat"])
-    response["enemy_flaw"] = battle.get("_proto_enemy_flaw_beat") == battle["_proto_beat"]
-    response["player_flaw"] = battle.get("_proto_player_flaw_beat") == battle["_proto_beat"]
-    response["struggle"] = battle.get("_proto_struggle_beat") == battle["_proto_beat"]
+    response["ap"] = state[AP_KEY]
+    response["beat"] = battle["beat"]
+    response["charged"] = _charge_is_ready(cfg, battle, battle["beat"])
+    response["enemy_flaw"] = battle.get("enemy_flaw_beat") == battle["beat"]
+    response["player_flaw"] = battle.get("player_flaw_beat") == battle["beat"]
+    response["struggle"] = battle.get("struggle_beat") == battle["beat"]
     response["next_intent"] = decide(cfg, battle, state, enemy)
     return response
+
+
+# ============================================================
+# 脱离休整（detached）：脱离后双方残血挂机，行动累计 recover_seconds
+# 静默回满、战斗重置。恢复静默发生，无任何 UI 通知。
+# ============================================================
+def is_detached(state: Dict) -> bool:
+    """是否处于"已脱离、计时恢复中"：计时标记在，且底层战斗仍保留着残血。"""
+    return state.get(DETACH_KEY) is not None and bool(state.get("current_battle"))
+
+
+def cancel_detach(state: Dict) -> None:
+    """玩家重新接战（点挑战/攻击/喝药）→ 取消休整计时。"""
+    state.pop(DETACH_KEY, None)
+
+
+def tick_recover(combat_system, game_state: Dict, game_data: Dict) -> None:
+    """时间推进点调用：脱离休整时间满 → 双方静默回满、战斗重置。无返回、无通知。
+
+    - 玩家回满：player_hp = player_max_hp（在任何场景都生效）；
+    - 敌人回满：清 current_battle，下次 start_battle 自然开满血新战斗；
+    - 自愈：计时标记在但战斗已不在（击杀/死亡等终止路径）→ 只清标记。
+    """
+    det = game_state.get(DETACH_KEY)
+    if det is None:
+        return
+
+    battle = game_state.get("current_battle")
+    if not battle:
+        # 战斗已被击杀/死亡等路径清掉：标记是残留，静默回收
+        game_state.pop(DETACH_KEY, None)
+        return
+
+    cfg = beat_config(game_data)
+    if not cfg:
+        game_state.pop(DETACH_KEY, None)
+        return
+
+    need = int(cfg.get("recover_seconds", 600))
+    elapsed = int(game_state.get("game_time", 0)) - int(det)
+    if elapsed < need:
+        return
+
+    # ---------- 休整时间到：双方静默恢复，不发任何提示 ----------
+    game_state["player_hp"] = game_state.get(
+        "player_max_hp", game_state.get("player_hp", 50))
+    combat_system.end_battle()
+    game_state.pop(DETACH_KEY, None)

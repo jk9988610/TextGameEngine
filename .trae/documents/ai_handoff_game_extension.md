@@ -80,6 +80,14 @@
 5. 文档：更新 `README.md` 数据模型与能力缺口；移除 PROTOTYPE 标注。
 6. 不破坏既有回归（当前基线 172/173，唯一失败为酒馆工程既有数据偏差）；在线模式仍冻结（见 §6）。
 
+**已完成批次**：
+- 2026-10-05 Beat 战斗批次：`engine/beat_combat.py`（拍制 AP+意图，动作/克制/决策器全配置驱动）；
+  旧三原型（脱离/防御/先后手）删除并入（脱离=Beat 动作、恢复=`beat_combat.recover_seconds`），
+  配置键 `beat_combat`，敌人级 `brain/telegraphs/intents/heavy_attack`（编辑器敌人页签可配），
+  状态键去 `_proto_` 前缀、读档自动迁移；击杀结算公共化为 `combat_system.settle_kill/publish`；
+  回归 `qa/m8_beat_combat.py`。用户方向决策：引擎纯粹为文本服务，**不做卡牌系统**；
+  循环可配置但不引入卡牌/复杂脚本。
+
 ## 5. 日常工作流（Windows / PowerShell）
 
 - 工程切换（仓库根目录；脚本刻意纯 ASCII）：

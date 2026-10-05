@@ -17,6 +17,9 @@ import tempfile
 import threading
 from typing import Dict, Any, List, Tuple, Optional, Set
 
+# Beat 战斗意图名集合（敌人 brain/征兆/意图文案的合法动作键以此为校验依据）
+from .beat_combat import INTENT_TEXT
+
 ID_PATTERN = re.compile(r'^[a-z0-9_]{1,32}$')
 NAME_MAX = 40
 DESC_MAX = 2000
@@ -918,6 +921,36 @@ class EditorManager:
             "reward_items": self._dedupe_strs(payload.get("reward_items", [])),
             "reward_gold": self._to_int(payload.get("reward_gold"), 0),
         }
+        # Beat 战斗可选字段：重击伤害 + 决策器参数（brain）+ 征兆/意图文案
+        heavy = payload.get("heavy_attack")
+        if heavy not in (None, ""):
+            cleaned["heavy_attack"] = self._to_int(heavy, -1)
+        brain_raw = payload.get("brain")
+        if isinstance(brain_raw, dict):
+            brain: Dict[str, Any] = {}
+            for key in ("rhythm", "frenzy_rhythm"):
+                seq = self._dedupe_strs(brain_raw.get(key, []))
+                if seq:
+                    brain[key] = seq
+            if "dodge_player_charge" in brain_raw:
+                brain["dodge_player_charge"] = bool(brain_raw.get("dodge_player_charge"))
+            mode = str(brain_raw.get("low_hp_mode", "")).strip()
+            if mode:
+                brain["low_hp_mode"] = mode
+            ratio = brain_raw.get("low_hp_ratio")
+            if ratio not in (None, ""):
+                try:
+                    brain["low_hp_ratio"] = float(ratio)
+                except (TypeError, ValueError):
+                    brain["low_hp_ratio"] = -1
+            if brain:
+                cleaned["brain"] = brain
+        tg = self._clean_intent_phrase_map(payload.get("telegraphs"))
+        if tg:
+            cleaned["telegraphs"] = tg
+        it = self._clean_intent_label_map(payload.get("intents"))
+        if it:
+            cleaned["intents"] = it
         return cleaned, is_new, eid
 
     def _validate_enemy(self, enemy: Dict[str, Any], items: Dict[str, Any],
@@ -944,7 +977,67 @@ class EditorManager:
         for iid in enemy["reward_items"]:
             if iid not in items:
                 errors.append(f"掉落物品不存在：{iid}（请先在物品页新建）")
+        # ---- Beat 战斗字段（可选；配置了才校验，动作名以引擎 INTENT_TEXT 为准）----
+        if "heavy_attack" in enemy:
+            if not isinstance(enemy["heavy_attack"], int) or enemy["heavy_attack"] < 0:
+                errors.append("重击伤害必须是非负整数")
+        brain = enemy.get("brain")
+        if brain:
+            for key in ("rhythm", "frenzy_rhythm"):
+                for step in brain.get(key, []):
+                    if step not in INTENT_TEXT:
+                        errors.append(
+                            f"节奏环 {key} 里有未知动作：{step}"
+                            f"（可用：{'/'.join(INTENT_TEXT)}）")
+            mode = brain.get("low_hp_mode")
+            if mode and mode not in ("brace", "frenzy"):
+                errors.append("残血行为只能是 brace（龟息）或 frenzy（狂暴）")
+            ratio = brain.get("low_hp_ratio")
+            if ratio is not None and not (isinstance(ratio, (int, float)) and 0 < ratio <= 1):
+                errors.append("残血阈值必须是 0~1 的小数（如 0.25）")
+        for field in ("telegraphs", "intents"):
+            for intent, val in (enemy.get(field) or {}).items():
+                if intent not in INTENT_TEXT:
+                    errors.append(
+                        f"{field} 里有未知动作：{intent}（可用：{'/'.join(INTENT_TEXT)}）")
+                if field == "telegraphs":
+                    for p in val:
+                        if len(p) > DESC_MAX:
+                            errors.append(f"征兆文案不能超过 {DESC_MAX} 个字")
+                else:
+                    if len(val[0]) > NAME_MAX:
+                        errors.append(f"意图名称不能超过 {NAME_MAX} 个字")
+                    if len(val[1]) > DESC_MAX:
+                        errors.append(f"意图提示不能超过 {DESC_MAX} 个字")
         return errors
+
+    # ---------- 内部：Beat 战斗文案清洗 ----------
+    @staticmethod
+    def _clean_intent_phrase_map(raw: Any) -> Dict[str, List[str]]:
+        """telegraphs：{intent: [征兆文案, ...]}；未知键/空列表丢弃。"""
+        out: Dict[str, List[str]] = {}
+        if not isinstance(raw, dict):
+            return out
+        for k, v in raw.items():
+            key = str(k).strip()
+            phrases = [str(p).strip() for p in v if str(p).strip()] if isinstance(v, list) else []
+            if key and phrases:
+                out[key] = phrases
+        return out
+
+    @staticmethod
+    def _clean_intent_label_map(raw: Any) -> Dict[str, List[str]]:
+        """intents：{intent: [名称, 提示]}；名称为空的条目丢弃。"""
+        out: Dict[str, List[str]] = {}
+        if not isinstance(raw, dict):
+            return out
+        for k, v in raw.items():
+            key = str(k).strip()
+            if key and isinstance(v, (list, tuple)) and len(v) == 2:
+                label, hint = str(v[0]).strip(), str(v[1]).strip()
+                if label:
+                    out[key] = [label, hint]
+        return out
 
     @staticmethod
     def _to_int(value: Any, default: int) -> int:

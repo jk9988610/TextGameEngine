@@ -201,6 +201,7 @@ function onNew() {
         $('enemy-defense').value = 2;
         $('enemy-gold').value = 0;
         renderEnemyRewards([]);
+        resetEnemyBeatFields(null);
         $('enemy-delete').classList.add('hidden');
     } else if (tab === 'npcs') {
         $('form-npc').classList.remove('hidden');
@@ -283,6 +284,7 @@ function showForm(kind, id) {
         $('enemy-defense').value = em.defense != null ? em.defense : 2;
         $('enemy-gold').value = em.reward_gold != null ? em.reward_gold : 0;
         renderEnemyRewards(em.reward_items || []);
+        resetEnemyBeatFields(em);
         $('enemy-delete').classList.remove('hidden');
     } else if (kind === 'npcs') {
         const npc = DATA.npcs[id];
@@ -516,7 +518,60 @@ async function deleteItem() {
 }
 
 // ---------- 敌人：保存 / 删除 ----------
+// Beat 战斗字段的表单 <-> 数据互转（留空 = 用引擎默认）
+function resetEnemyBeatFields(em) {
+    const brain = (em && em.brain) || {};
+    $('enemy-heavy').value = (em && em.heavy_attack != null) ? em.heavy_attack : '';
+    $('enemy-rhythm').value = (brain.rhythm || []).join(',');
+    $('enemy-frenzy-rhythm').value = (brain.frenzy_rhythm || []).join(',');
+    $('enemy-lowhp-mode').value = brain.low_hp_mode || '';
+    $('enemy-lowhp-ratio').value = brain.low_hp_ratio != null ? brain.low_hp_ratio : '';
+    $('enemy-dodge-charge').checked = brain.dodge_player_charge !== false;
+    $('enemy-telegraphs').value = (em && em.telegraphs)
+        ? JSON.stringify(em.telegraphs, null, 2) : '';
+    $('enemy-intents').value = (em && em.intents)
+        ? JSON.stringify(em.intents, null, 2) : '';
+}
+
+function collectEnemyBeatPayload() {
+    const payload = {};
+    const heavy = $('enemy-heavy').value.trim();
+    if (heavy !== '') payload.heavy_attack = parseInt(heavy, 10);
+    const rhythm = $('enemy-rhythm').value.split(',').map(s => s.trim()).filter(Boolean);
+    const frenzy = $('enemy-frenzy-rhythm').value.split(',').map(s => s.trim()).filter(Boolean);
+    const mode = $('enemy-lowhp-mode').value;
+    const ratio = $('enemy-lowhp-ratio').value.trim();
+    const dodge = $('enemy-dodge-charge').checked;
+    if (rhythm.length || frenzy.length || mode || ratio !== '' || !dodge) {
+        const brain = {};
+        if (rhythm.length) brain.rhythm = rhythm;
+        if (frenzy.length) brain.frenzy_rhythm = frenzy;
+        if (mode) brain.low_hp_mode = mode;
+        if (ratio !== '') brain.low_hp_ratio = parseFloat(ratio);
+        brain.dodge_player_charge = dodge;
+        payload.brain = brain;
+    }
+    for (const [key, el] of [['telegraphs', $('enemy-telegraphs')], ['intents', $('enemy-intents')]]) {
+        const raw = el.value.trim();
+        if (!raw) continue;
+        try {
+            payload[key] = JSON.parse(raw);
+        } catch (e) {
+            el.focus();
+            throw new Error(`${key === 'telegraphs' ? '模糊征兆' : '意图明牌'} 不是合法 JSON：${e.message}`);
+        }
+    }
+    return payload;
+}
+
 async function saveEnemy() {
+    let beatFields;
+    try {
+        beatFields = collectEnemyBeatPayload();
+    } catch (e) {
+        toast(e.message, 'error');
+        return;
+    }
     const payload = {
         id: $('enemy-id').value.trim(),
         name: $('enemy-name').value,
@@ -526,6 +581,7 @@ async function saveEnemy() {
         defense: parseInt($('enemy-defense').value, 10),
         reward_gold: parseInt($('enemy-gold').value, 10),
         reward_items: [...document.querySelectorAll('.reward-cb:checked')].map(cb => cb.dataset.id),
+        ...beatFields,
     };
     const res = await fetch('/api/editor/enemy', {
         method: 'POST',

@@ -12,6 +12,7 @@ from .session_manager import SessionManager
 from .save_manager import SaveManager
 from .auth_manager import AuthManager
 from .event_rules import DeclarativeRules
+from . import beat_combat
 
 __all__ = [
     "EventBus",
@@ -25,4 +26,5 @@ __all__ = [
     "SaveManager",
     "AuthManager",
     "DeclarativeRules",
+    "beat_combat",
 ]

@@ -18,19 +18,9 @@
     "combat_turn": 60,
     "buy_item": 20
   },
-  "_proto_retreat": {
+  "beat_combat": {
     "enabled": true,
-    "recover_seconds": 600
-  },
-  "_proto_defend": {
-    "enabled": true,
-    "reduction": 0.5
-  },
-  "_proto_turnorder": {
-    "enabled": true
-  },
-  "_proto_beatcombat": {
-    "enabled": true,
+    "recover_seconds": 600,
     "ap_start": 1,
     "ap_per_beat": 1,
     "ap_max": 3,

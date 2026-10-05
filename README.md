@@ -32,7 +32,8 @@ engine/                 # 引擎（与具体游戏内容无关）
   scene_manager.py      # 场景/出口/锁
   item_system.py        # 背包、拾取、货币折算、消耗品
   shop_system.py        # 无限供应商店
-  combat_system.py      # 回合制战斗、战斗喝药、金币掉落
+  combat_system.py      # 回合制战斗、战斗喝药、金币掉落（含击杀公共结算 settle_kill）
+  beat_combat.py        # Beat 制战斗：拍制 AP+意图，动作/克制/敌人决策器全配置驱动
   npc_system.py         # 对话树：条件问候、选项条件（效果交路由层执行）
   effects.py            # 通用条件 + 效果库（M5 起所有"规则"都走这里）
   event_rules.py        # 声明式事件（7 类触发器，条件/效果复用 effects.py）
@@ -79,6 +80,12 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
   `from_scene="__console__"`，不会命中限定场景的拾取规则——这是特性不是 bug。
 
 战斗公式：玩家命中 = 武器 damage − 敌防；敌人反击 = max(1, 敌攻 − 玩家防)。
+Beat 制战斗（可选，`game_config.json` 的 `beat_combat` 块启用）：拍首敌人意图明牌（普通拍给
+模糊征兆）→ 玩家选一个主动作（攻/格挡/闪避/蓄力/脱离）→ 同拍同时结算 → 拍末 AP 回复。
+动作费用与克制关系由 `beat_combat.actions` 声明（effects/interactions），敌人行为由
+`enemies.json` 的 `brain`（节奏环/残血性格/是否会躲重击）、`telegraphs`（征兆文案）、
+`intents`（明牌文案）、`heavy_attack`（重击伤害）按敌覆盖，未配置走引擎默认决策器。
+经典回合制与 Beat 制由配置开关二选一，前端自动切换动作区。
 （注意：玩家自身的 attack 属性当前不参与命中，别按它算预期伤害。）
 
 **NPC 对话画布**（编辑器顶栏「列表编辑 | 画布编辑」双工作台，蓝图式）：
@@ -108,7 +115,7 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 
 里程碑：M1 引擎去游戏化 → M2 地点/物品编辑器 → M3 金币/商店/喝药 → M4 敌人编辑 →
 M5 NPC/对话/条件效果 → M6 事件规则/开局配置 → M7 NPC 对话画布。
-后续规划：战斗深化（技能/防御/逃跑/多敌人/经验）、限量商店、任务日志 UI。
+后续规划：战斗深化（技能/多敌人/经验）、限量商店、任务日志 UI。
 
 ---
 

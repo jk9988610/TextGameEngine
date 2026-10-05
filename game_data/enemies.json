@@ -23,14 +23,21 @@
       "guardian_core"
     ],
     "reward_gold": 20,
-    "_proto_brain": {
-      "rhythm": ["bash", "bash", "charge"],
-      "frenzy_rhythm": ["bash", "charge"],
+    "brain": {
+      "rhythm": [
+        "bash",
+        "bash",
+        "charge"
+      ],
+      "frenzy_rhythm": [
+        "bash",
+        "charge"
+      ],
       "dodge_player_charge": false,
       "low_hp_mode": "frenzy",
       "low_hp_ratio": 0.3
     },
-    "_proto_telegraphs": {
+    "telegraphs": {
       "bash": [
         "它抬起石臂，地面随着它的脚步微微震颤。",
         "它沉下肩膀，石躯前倾，石甲的纹路发出低沉的摩擦声。",
@@ -49,9 +56,15 @@
         "聚起的力量从纹路里泄出，它动作一滞，露出片刻的呆滞。"
       ]
     },
-    "_proto_intents": {
-      "charge": ["蓄力重击", "下一拍重击 12 点！它本拍不会出手——攻击可以打断蓄力"],
-      "heavy": ["蓄力重击", "重击 12 点，格挡受 5 点，闪避可完全避开"]
+    "intents": {
+      "charge": [
+        "蓄力重击",
+        "下一拍重击 12 点！它本拍不会出手——攻击可以打断蓄力"
+      ],
+      "heavy": [
+        "蓄力重击",
+        "重击 12 点，格挡受 5 点，闪避可完全避开"
+      ]
     }
   }
 }

@@ -28,6 +28,47 @@ class CombatSystem:
 
         # 🆕 不再订阅 SCENE_ENTER 自动开怪！改成玩家主动点按钮触发
 
+    # ---------- 公共出口（其他引擎模块经由它们发事件/结算，不触碰内部字段） ----------
+    def publish(self, event: str, **kwargs) -> None:
+        """向事件总线发布事件。"""
+        self._bus.publish(event, **kwargs)
+
+    def settle_kill(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """玩家击杀当前战斗敌人的公共结算段：
+        事件（COMBAT_DEATH/ENEMY_KILLED）、永久死亡标记、掉落进场景、金币入账、
+        结束战斗。返回胜利面板数据 {"enemy", "gold", "items":[{id,name,description}]}，
+        日志按时间顺序追加进 response["log"]。"""
+        battle = self._state.get("current_battle")
+        enemy = self._get_current_enemy()
+        if not battle or not enemy:
+            return {"enemy": "", "gold": 0, "items": []}
+        response["log"].append(f"【{enemy['name']}】被你打倒了！")
+        self._bus.publish("COMBAT_DEATH", dead=enemy["id"])
+        # 语义干净的击杀事件（玩家死亡不发），供事件规则做"击杀任务/掉落"
+        self._bus.publish("ENEMY_KILLED", enemy_id=enemy["id"])
+        # 🆕 关键：标记永久死亡 → 以后再进洞穴不会复活了
+        self._state.setdefault("killed_enemies", [])
+        if enemy["id"] not in self._state["killed_enemies"]:
+            self._state["killed_enemies"].append(enemy["id"])
+        # 战利品掉落（进场景物品池）
+        current_scene = self._state["current_scene"]
+        reward_items = []
+        for item_id in enemy.get("reward_items", []):
+            self._state.setdefault("scene_item_states", {}).setdefault(current_scene, []).append(item_id)
+            item_data = self._data["items"][item_id]
+            reward_items.append({"id": item_id, "name": item_data["name"],
+                                 "description": item_data.get("description", "")})
+            response["log"].append(f"战利品掉落：【{item_data['name']}】出现在地上！")
+        # 金币掉落（直接入余额，不占背包）
+        reward_gold = int(enemy.get("reward_gold", 0))
+        if reward_gold > 0:
+            self._state["player_gold"] = self._state.get("player_gold", 0) + reward_gold
+            response["log"].append(
+                f"战利品：金币 +{reward_gold}（当前金币：{self._state['player_gold']}）")
+        self.end_battle()
+        return {"enemy": enemy.get("name", enemy["id"]),
+                "gold": reward_gold, "items": reward_items}
+
     # ---------- 事件回调（不再自动开战斗） ----------
     def _on_scene_enter(self, scene_id: str, **kwargs) -> None:
         """🆕 进场景不再自动开战斗！只检查：已有 current_battle 但敌人已死 → 清掉"""
@@ -172,27 +213,7 @@ class CombatSystem:
 
         # 敌人死了？
         if battle["enemy_hp"] <= 0:
-            response["log"].append(f"【{enemy['name']}】被你打倒了！")
-            self._bus.publish("COMBAT_DEATH", dead=enemy["id"])
-            # 语义干净的击杀事件（玩家死亡不发），供事件规则做"击杀任务/掉落"
-            self._bus.publish("ENEMY_KILLED", enemy_id=enemy["id"])
-            # 🆕 关键：标记永久死亡 → 以后再进洞穴不会复活了
-            self._state.setdefault("killed_enemies", [])
-            if enemy["id"] not in self._state["killed_enemies"]:
-                self._state["killed_enemies"].append(enemy["id"])
-            # 战利品掉落（进场景物品池）
-            current_scene = self._state["current_scene"]
-            for item_id in enemy.get("reward_items", []):
-                self._state.setdefault("scene_item_states", {}).setdefault(current_scene, []).append(item_id)
-                item_name = self._data["items"][item_id]["name"]
-                response["log"].append(f"战利品掉落：【{item_name}】出现在地上！")
-            # 金币掉落（直接入余额，不占背包）
-            reward_gold = int(enemy.get("reward_gold", 0))
-            if reward_gold > 0:
-                self._state["player_gold"] = self._state.get("player_gold", 0) + reward_gold
-                response["log"].append(
-                    f"战利品：金币 +{reward_gold}（当前金币：{self._state['player_gold']}）")
-            self.end_battle()
+            self.settle_kill(response)
             response["success"] = True
             response["message"] = "战斗胜利！"
             response["defeated"] = enemy["id"]
@@ -208,7 +229,7 @@ class CombatSystem:
         # 玩家死了？
         if new_hp <= 0:
             self._bus.publish("COMBAT_DEATH", dead="player")
-            self._handle_player_death(response)
+            self.handle_player_death(response)
             return response
 
         response["success"] = True
@@ -267,7 +288,7 @@ class CombatSystem:
 
         if new_hp <= 0:
             self._bus.publish("COMBAT_DEATH", dead="player")
-            self._handle_player_death(response)
+            self.handle_player_death(response)
             return response
 
         response["success"] = True
@@ -275,7 +296,7 @@ class CombatSystem:
         response["player"] = self._get_player_stats()
         return response
 
-    def _handle_player_death(self, response: Dict[str, Any]) -> None:
+    def handle_player_death(self, response: Dict[str, Any]) -> None:
         """玩家被打倒的统一处理：回酒馆满血复活，结束战斗（MVP 无惩罚）"""
         response["log"].append("你被打倒了...")
         # 玩家死亡：回酒馆满血复活，敌人重置（MVP 不做惩罚）
