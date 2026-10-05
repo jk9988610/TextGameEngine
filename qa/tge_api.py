@@ -247,6 +247,12 @@ class GameClient:
             f"/api/editor/npc-layout/{urllib.parse.quote(npc_id)}", layout)
         return d
 
+    # ---------- 场景地图布局（坐标，独立通道） ----------
+    def scene_layout_save(self, scene_id: str, pos: dict) -> dict:
+        _, d = self.post(
+            f"/api/editor/scene-layout/{urllib.parse.quote(scene_id)}", pos)
+        return d
+
     # ---------- 清理 ----------
     def cleanup_saves(self, db_path: str = DEFAULT_DB) -> int:
         """删掉本 client 在 SQLite 里留下的所有存档槽，返回删除行数。"""

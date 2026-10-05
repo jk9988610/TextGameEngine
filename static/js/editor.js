@@ -34,6 +34,7 @@ async function loadData() {
     // 画布模式下重拉只刷新工作台（保持模式/选中），列表 DOM 不动
     if (document.body.classList.contains('workbench-canvas')) {
         window.NpcCanvas?.refresh();
+        window.SceneCanvas?.refresh();
         return;
     }
     renderList();
@@ -52,16 +53,24 @@ window.EditorActions = {
         switchTab('npcs');
         showForm('npcs', id);
     },
+    editScene(id) {
+        setWorkbench(false);
+        switchTab('scenes');
+        showForm('scenes', id);
+    },
 };
 
-/* 顶栏「列表编辑 | 画布编辑」模式开关 */
+/* 顶栏「列表编辑 | 画布编辑」模式开关
+ * NPC 页签 = 对话树画布；地点页签（及其他页签）= 世界地图画布 */
 function setWorkbench(canvasOn) {
     document.body.classList.toggle('workbench-canvas', canvasOn);
     $('mode-list').classList.toggle('active', !canvasOn);
     $('mode-canvas').classList.toggle('active', canvasOn);
-    // 在 NPC 页签且选中了某个 NPC 时，画布跟随该 NPC
-    if (canvasOn) window.NpcCanvas?.enter(tab === 'npcs' ? selectedId : null);
-    else window.NpcCanvas?.exit();
+    window.NpcCanvas?.exit();
+    window.SceneCanvas?.exit();
+    if (!canvasOn) return;
+    if (tab === 'npcs') window.NpcCanvas?.enter(selectedId);
+    else window.SceneCanvas?.enter(tab === 'scenes' ? selectedId : null);
 }
 
 // ---------- 列表 / 页签 ----------
@@ -117,6 +126,13 @@ function switchTab(next) {
         b.classList.toggle('active', b.dataset.tab === tab));
     renderList();
     showEmpty();
+    // 画布模式下切页签 = 直接切换对应画布（NPC ↔ 世界地图）
+    if (document.body.classList.contains('workbench-canvas')) {
+        window.NpcCanvas?.exit();
+        window.SceneCanvas?.exit();
+        if (tab === 'npcs') window.NpcCanvas?.enter(null);
+        else window.SceneCanvas?.enter(null);
+    }
 }
 
 function renderList() {

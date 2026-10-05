@@ -578,6 +578,7 @@ def editor_get_data():
         "npcs": GAME_DATA["npcs"],
         "config": GAME_DATA["config"],
         "layouts": EDITOR.load_layouts(),
+        "scene_layouts": EDITOR.load_scene_layouts(),
         "initial_scene": (GAME_DATA.get("config") or {}).get("initial_scene", ""),
     })
 
@@ -608,6 +609,15 @@ def editor_delete_scene(scene_id):
         initial_scene=initial_scene,
         live_scene_ids=SM.live_current_scenes())
     return jsonify(result)
+
+
+@app.route('/api/editor/scene-layout/<scene_id>', methods=['POST'])
+def editor_save_scene_layout(scene_id):
+    """保存场景地图画布上单个地点的坐标（辅助数据，不影响游戏内容）"""
+    denied = _editor_guard()
+    if denied:
+        return denied
+    return EDITOR.save_scene_layout(scene_id, request.json or {})
 
 
 @app.route('/api/editor/item', methods=['POST'])

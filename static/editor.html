@@ -356,7 +356,7 @@
         <div id="cw-bar">
             <button type="button" id="cw-panel-toggle" class="cw-tb" title="收纳/展开属性栏（Ctrl+B）">☰</button>
             <span class="cw-sep"></span>
-            <span class="cw-bar-label">对话树</span>
+            <span class="cw-bar-label" id="cw-mode-label">对话树</span>
             <select id="cw-npc" title="每个 NPC 一棵独立对话图"></select>
             <button type="button" id="cw-add" class="cw-tb">＋ 卡片</button>
             <button type="button" id="cw-save" class="cw-tb primary">保存</button>
@@ -382,8 +382,8 @@
         </aside>
 
         <div id="cw-status">
-            <span>对话：<b id="cw-st-npc">—</b></span>
-            <span>节点 <b id="cw-st-nodes">0</b></span>
+            <span><span id="cw-st-npc-label">对话</span>：<b id="cw-st-npc">—</b></span>
+            <span><span id="cw-st-nodes-label">节点</span> <b id="cw-st-nodes">0</b></span>
             <span>坐标 <b id="cw-st-xy">0, 0</b> 格</span>
             <span>缩放 <b id="cw-st-zoom">100%</b></span>
             <span class="cw-sp"></span>
@@ -453,5 +453,6 @@
     <script src="js/graph_model.js"></script>
     <script src="js/editor.js"></script>
     <script src="js/npc_canvas.js"></script>
+    <script src="js/scene_canvas.js"></script>
 </body>
 </html>

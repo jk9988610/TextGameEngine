@@ -110,7 +110,8 @@
 - 在线模式冻结：不新增/重构在线/隔离层（session_manager、save 双轨、auth），
   QA 只测离线；改 NPC/对话/事件/配置不影响进行中的游戏（热更新边界见 README）。
 - 多会话存档隔离键（离线 client_id、在线 user_id）不能动。
-- 游戏 JSON 里不放坐标；坐标是编辑器独立的 `npc_layouts.json`。
+- 游戏 JSON 里不放坐标；坐标是编辑器独立的 `npc_layouts.json`（对话画布）与
+  `scene_layouts.json`（世界地图画布），引擎一律不读。
 - 出口是单向的（新增出口不自动加返程），这是锁剧情的设计不是 bug。
 - 玩家命中 = 武器 damage − 敌防；玩家自身 attack 属性不参与（别设计靠攻击力的玩法）。
 

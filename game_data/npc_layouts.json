@@ -34,37 +34,9 @@
     }
   },
   "npc_2_sprite": {
-    "after_kill": {
-      "x": -392,
-      "y": -224
-    },
-    "after_kill_hard": {
-      "x": 280,
-      "y": 28
-    },
-    "after_kill_humble": {
-      "x": 280,
-      "y": -280
-    },
-    "blessing_done": {
-      "x": 672,
-      "y": -56
-    },
     "greet": {
-      "x": -420,
-      "y": -644
-    },
-    "has_key": {
-      "x": 140,
-      "y": -504
-    },
-    "leave": {
-      "x": 1064,
-      "y": -196
-    },
-    "secret": {
-      "x": 532,
-      "y": -672
+      "x": 100,
+      "y": 100
     }
   },
   "old_guard": {

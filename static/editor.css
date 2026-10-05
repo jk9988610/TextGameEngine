@@ -599,3 +599,27 @@ body.config-open .ed-sidebar { display: none; }
     margin-bottom: 0.6rem;
 }
 .config-head h2 { margin: 0; }
+
+/* ============ 场景地图画布（scene_canvas.js） ============ */
+body.workbench-scenes #cw-npc { display: none; }
+.nc-canvas .drawflow-node.sm-node { width: 215px; }
+.sm-head { padding: 8px 11px 2px; font-size: 13px; font-weight: 600; }
+.sm-head .sm-born { color: #e8b93c; font-size: 10.5px; margin-left: 4px; font-weight: 400; }
+.sm-id { padding: 0 11px 6px; font-size: 10.5px; color: var(--text-dim); }
+.sm-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 0 11px 9px;
+    font-size: 10.5px; color: var(--text-dim); }
+
+/* 出口连线样式：单向带箭头、锁定红色虚线 */
+.nc-canvas .connection.sm-edge .main-path { stroke-width: 2px; }
+.nc-canvas .connection.sm-edge.sm-one .main-path { marker-end: url(#sm-arrow); }
+.nc-canvas .connection.sm-edge.sm-locked .main-path { stroke: #e05656; stroke-dasharray: 6 4; }
+
+/* 地点摘要抽屉 */
+.sm-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.sm-row .k { color: var(--text-dim); flex: none; }
+.sm-row .v { text-align: right; }
+.sm-line { font-size: 12px; line-height: 1.7; }
+.sm-line.sm-click { cursor: pointer; }
+.sm-line.sm-click:hover { color: var(--accent); }
+.sm-dim { color: var(--text-dim); font-size: 10.5px; margin-left: 4px; }
+#nci-body .ed-check { margin: 2px 0; font-size: 12px; }

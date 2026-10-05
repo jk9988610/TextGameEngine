@@ -119,7 +119,14 @@
     if (view.mode === "canvas") return;
     view.mode = "canvas";
     document.body.classList.add("workbench-canvas");
+    document.body.classList.remove("workbench-scenes");
     $("cw-workbench").classList.remove("hidden");
+    // 工具条切回对话树形态（世界地图画布会改这些共享控件的文案/可见性）
+    $("cw-mode-label").textContent = "对话树";
+    $("cw-st-npc-label").textContent = "对话";
+    $("cw-st-nodes-label").textContent = "节点";
+    $("cw-add").textContent = "＋ 卡片";
+    $("nci-edit-npc").classList.remove("hidden");
     if (prefId && DATA.npcs[prefId]) view.npcId = prefId;
     else if (!view.npcId || !DATA.npcs[view.npcId]) {
       view.npcId = Object.keys(DATA.npcs || {}).sort()[0] || null;

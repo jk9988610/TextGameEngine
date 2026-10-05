@@ -4,7 +4,7 @@ Flask + 原生 HTML/CSS/JS（零前端框架、零构建步骤）的**点击式�
 引擎逻辑与游戏数据严格分离：场景、物品、敌人、NPC 对话全部是 JSON，既能手改，也能用内置的可视化编辑器制作。
 
 - 单机离线游玩：多槽存档 + 自动存档，存本地 SQLite
-- 可视化编辑：地点 / 物品 / 敌人 / NPC 对话树（列表 + 拉线画布双视图）/ 商店，即改即玩
+- 可视化编辑：地点（列表 + 世界地图画布）/ 物品 / 敌人 / NPC 对话树（列表 + 拉线画布双视图）/ 商店，即改即玩
 - 部署形态：本地 venv 直接跑，也可 Gunicorn + Nginx 部署（`deploy/`）
 
 ---
@@ -45,6 +45,7 @@ game_data/              # 游戏数据（JSON，全部可配）
   game_config.json      # 初始场景/背包/金币/玩家属性/操作耗时/event_rules
   scenes.json items.json enemies.json npc_dialogues.json
   npc_layouts.json      # 对话画布的节点坐标（仅布局，非游戏内容；M7）
+  scene_layouts.json    # 世界地图画布的场景坐标（仅布局，非游戏内容；M9）
   offline_saves.db      # 离线存档（运行后生成）
 static/                 # 前端：index.html + editor.html + js/*（原生 JS）
   lib/drawflow.*        # 对话画布 vendored 库（零构建）
@@ -63,6 +64,7 @@ deploy/                 # 阿里云生产部署文件（Gunicorn/Nginx/systemd�
 | `enemies.json` | `hp/attack/defense/reward_items/reward_gold`（金币直接入账，物品掉地上需拾取） |
 | `npc_dialogues.json` | `greeting` + `greeting_rules:[{if,node}]` 起点；`nodes` 节点树；选项可挂 `if` 条件与 `effects` 效果 |
 | `npc_layouts.json` | **仅画布坐标** `{npc_id:{node_id:{x,y}}}`，运行时引擎完全不读；节点增删后自动清孤儿坐标 |
+| `scene_layouts.json` | **仅地图坐标** `{scene_id:{x,y}}`，运行时引擎完全不读；删除场景时自动清坐标 |
 | `game_config.json` | 一切初始值：游戏标题/简介、初始场景/背包/金币/玩家属性；`event_rules` 事件规则 |
 
 **条件**（effects.py）：`{flag}` / `{has_item}` / `{enemy_killed}` / `{gold_gte}`。
@@ -111,19 +113,33 @@ Beat 制战斗（可选，`game_config.json` 的 `beat_combat` 块启用）：�
 - 拖动坐标走**独立通道**防抖存 `/api/editor/npc-layout/<id>` → `npc_layouts.json`，
   游戏 JSON 永远不含 x/y；每 NPC 的平移/缩放与编辑器设置都在 localStorage（本机偏好）。
 - 前端分层：`js/graph_model.js`（数据⇄图模型纯函数，零 DOM）+ `js/npc_canvas.js`（工作台控制器），
-  换库只换后者。规划中：世界图层（地点+出口拉线）、场景→NPC 钻取、敌人改名「对战」界面归组。
+  换库只换后者。
+
+**世界地图画布**（地点页签或任意页签切「画布编辑」即进入，M9）：
+- 节点 = 地点卡片（名称/ID/物品·商店·敌人·NPC 数摘要、★出生点标记），连线 = 出口关系：
+  实线＝双向通行，带箭头＝单向出口，红色虚线＝锁定出口（任一方向锁定即标红）。
+- 拉线 = 新建出口；点连线 → 出口检查器（勾选 A→B / B→A / 各自锁定，数据精确到方向）；
+  点卡片 → 地点摘要抽屉（出口/入口/在场内容）＋「编辑详情」跳列表表单 /「删除该地点」；
+  「＋ 地点」画布上直接建骨架（输入 ID，描述占位，详情列表里补）。
+- 拖卡摆位走**独立通道**防抖存 `/api/editor/scene-layout/<id>` → `scene_layouts.json`，
+  引擎不读；出口/锁定改动进待保存队列（底栏「未保存」计数），「保存」/Ctrl+S 批量
+  POST `/api/editor/scene`（后端 upsert_scene 校验兜底）。右键拖动平移，滚轮缩放，
+  视图与平移/缩放记忆都在 localStorage。
+- 前端 `js/scene_canvas.js` 与 NPC 画布共享同一工作台 DOM（`#cw-workbench`），
+  页签切换时两画布互斥挂载，工具条文案随模式切换。
 
 里程碑：M1 引擎去游戏化 → M2 地点/物品编辑器 → M3 金币/商店/喝药 → M4 敌人编辑 →
-M5 NPC/对话/条件效果 → M6 事件规则/开局配置 → M7 NPC 对话画布。
-后续规划：战斗深化（技能/多敌人/经验）、限量商店、任务日志 UI。
+M5 NPC/对话/条件效果 → M6 事件规则/开局配置 → M7 NPC 对话画布 →
+M8 Beat 战斗抽离（engine/beat_combat.py）→ M9 世界地图画布。
+后续规划：战斗深化（技能/多敌人/经验）、限量商店、任务日志 UI、场景→NPC/地图钻取。
 
 ---
 
 ## 4. 测试：`qa/` 包（仅 Python 标准库，无第三方依赖）
 
 ```powershell
-.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（M3~M7，173 条）
-.\.venv\Scripts\python.exe -m qa.m7_npc_canvas    # 单跑一个里程碑
+.\.venv\Scripts\python.exe -m qa.run_all          # 全部回归（M3~M9，210 条）
+.\.venv\Scripts\python.exe -m qa.m9_scene_canvas  # 单跑一个里程碑
 ```
 
 - 新里程碑：新建 `qa/m7_xxx.py`，提供 `SUITE` 名和 `run(r)`（套件内自建 GameClient）即可被自动发现。

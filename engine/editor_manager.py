@@ -55,6 +55,7 @@ class EditorManager:
             "npcs": "npc_dialogues.json",
             "config": "game_config.json",
             "layouts": "npc_layouts.json",   # 画布手动布局坐标（非游戏内容）
+            "scene_layouts": "scene_layouts.json",  # 场景地图画布坐标（非游戏内容）
         }
         self._lock = threading.Lock()  # 写盘串行化，避免并发保存互相覆盖
 
@@ -109,6 +110,11 @@ class EditorManager:
             name = scenes[scene_id].get("name", scene_id)
             del scenes[scene_id]
             self._write_json("scenes", scenes)
+            # 场景地图坐标是辅助数据：场景没了，坐标一并清掉
+            layouts = self.load_scene_layouts()
+            if scene_id in layouts:
+                del layouts[scene_id]
+                self._write_json("scene_layouts", layouts)
             return {"success": True, "message": f"地点【{name}】已删除"}
 
     # ---------- 物品 upsert ----------
@@ -504,6 +510,33 @@ class EditorManager:
                     layouts[npc_id] = kept; changed = True
             if changed:
                 self._write_json("layouts", layouts)
+
+    # ---------- 场景地图布局（坐标；非游戏内容，独立于 scenes.json） ----------
+    def load_scene_layouts(self) -> Dict[str, Dict[str, int]]:
+        """读取场景地图坐标：{scene_id: {x,y}}；文件缺失/损坏按空处理。"""
+        try:
+            data = self.load("scene_layouts")
+            return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def save_scene_layout(self, scene_id: str, pos: Dict[str, Any]) -> Dict[str, Any]:
+        """保存单个场景在地图画布上的坐标。只接受 {x:int,y:int}；
+        布局是辅助数据，场景是否存在不在此拦截（删除场景时顺带清理）。"""
+        if not (isinstance(scene_id, str) and ID_PATTERN.match(scene_id)):
+            return {"success": False, "message": "地点 ID 非法"}
+        lo, hi = self.LAYOUT_RANGE
+        try:
+            x, y = int((pos or {}).get("x")), int((pos or {}).get("y"))
+        except (TypeError, ValueError):
+            return {"success": False, "message": "坐标必须是整数"}
+        if not (lo <= x <= hi and lo <= y <= hi):
+            return {"success": False, "message": "坐标超出范围"}
+        with self._lock:
+            layouts = self.load_scene_layouts()
+            layouts[scene_id] = {"x": x, "y": y}
+            self._write_json("scene_layouts", layouts)
+        return {"success": True, "id": scene_id}
 
     # ---------- 内部：开局配置清洗/校验 ----------
     def _clean_and_validate_config(self, payload: Dict[str, Any],
