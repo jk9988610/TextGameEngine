@@ -1,6 +1,6 @@
 # 《森林试炼》最小可玩 Demo
 
-一个用本引擎**纯数据配置**出来的 3 场景 + 1 场战斗的完整小游戏，不写一行引擎代码。
+一个用本引擎**纯数据配置**出来的 3 场景 + 2 场战斗的完整小游戏，不写一行引擎代码。
 它同时是「让 AI 用这个引擎做游戏」的参照模板：覆盖了引擎最常用的全套机制，数据量压到最小。
 
 ## 一、加载与还原（仓库根目录执行）
@@ -37,8 +37,9 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
 | 4 | 森林 `forest` | 往北走，立刻进入与「森林史莱姆」的战斗，打赢它 | 战斗 / 武器伤害公式 |
 | 5 | 森林 | 史莱姆死亡：获得 5 金币 + 石门钥匙，石门「当啷」解锁 | 敌人掉落金币/物品 + `ENEMY_KILLED` 事件 + `unlock` 效果 |
 | 6 | 森林 | 走进洞穴（没打史莱姆之前这里是锁着的） | 锁门 `locked_exits` / 单向出口 |
-| 7 | 洞穴 `cave` | 捡起石台上的金币 | 场景物品拾取 / 货币自动折算 + `ITEM_TAKEN` 事件 + `set_flag` |
-| 8 | 回村口 | 再找老守卫：台词变成夸奖「你通过了试炼」 | 条件问候（按 `flag` 切换入口节点） |
+| 7 | 洞穴 `cave` | 挑战挡在石台前的「石门守卫」，打倒它 | Boss 战：`_proto_brain` 差异化决策器 / 掉落金币 + 核晶 |
+| 8 | 洞穴 `cave` | 捡起石台上的金币 | 场景物品拾取 / 货币自动折算 + `ITEM_TAKEN` 事件 + `set_flag` |
+| 9 | 回村口 | 再找老守卫：台词变成夸奖「你通过了试炼」 | 条件问候（按 `flag` 切换入口节点） |
 
 战斗数值（有意设计成新手能稳赢）：
 - 玩家铁剑 damage 10、攻击 5、防御 2、HP 50；史莱姆 HP 26、攻击 6、防御 1，普攻每击 9 伤。
@@ -58,6 +59,11 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
   ⑤ 玩家蓄力就绪且残血→撞击（重击必须能收头）
   ⑥ 自身 HP≤25% 且玩家未蓄力→蜷缩龟息
   ⑦ 否则按节奏 撞击→蓄力→(承诺重击) 三拍循环。
+  决策参数支持按敌人 `_proto_brain` 覆盖：`rhythm`（撞击/蓄力节奏环）、`frenzy_rhythm`
+  （残血狂暴的更快节奏环）、`dodge_player_charge`（能否躲玩家重击）、
+  `low_hp_mode`（brace 龟息 | frenzy 狂暴不蜷缩）、`low_hp_ratio`（残血阈值）；
+  史莱姆未配置走上面默认。敌人还可覆盖 `heavy_attack`（重击伤害）、
+  `_proto_telegraphs`（动态征兆文案）、`_proto_intents`（看穿拍的动作说明）。
   普通拍面不直接显示动作名，而是用由实际动作决定的动态词汇表描述史莱姆的姿态；同一动作
   按拍序轮换近义表述，玩家应从表现中判断其意图。重击被躲后的破绽拍会明确显示已看穿的动作，
   作为成功读招的奖励。决策器不改招，情报价值归玩家。玩家重击被躲→下一拍露破绽（仅提示）
@@ -76,8 +82,12 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
   本轮还验证了状态生命周期：`charge.effects` 的 `apply_state` 添加 `readied`，
   `duration_beats` 控制状态到期拍，`attack` 的 `consume_state` 消费它，
   `clear_state_on_damage` 在蓄力受伤时清除。当前 demo 保持 1 拍；冒烟另用 2 拍配置验证
-  状态确实能多保留一拍。蓄力和重击仍使用 demo 原型字段兼容存档；这仍不是引擎通用动作 API，
-  敌人决策器尚未配置化。
+  状态确实能多保留一拍。蓄力和重击仍使用 demo 原型字段兼容存档；这仍不是引擎通用动作 API。
+- **石门守卫（Boss，洞穴深处）**：HP 60、攻击 7、防御 2、重击 12（格挡受 5）。
+  `_proto_brain`：节奏 **撞→撞→蓄力**（重击由承诺位打出，比史莱姆更压制）；
+  石头躲不动玩家重击（`dodge_player_charge=false`，你蓄力它只能换血）；
+  残血 ≤30% **狂暴**（`frenzy`：不蜷缩、节奏加速为 撞→蓄）。掉落 20 金币 +
+  守卫核晶（纪念品，描述里留了钩子）。通关走查第 7 步。
 - 早期战斗原型（脱离 proto_retreat / 防御 proto_defend / 先后手 proto_turnorder）
   代码保留但与 beat 开关互斥，beat 启用时其接口 409、冒烟自动 SKIP，待抽离批次统一处理。
 - 原型机制详见 `games/demo_minimal/proto_*.py`，均待试玩后抽离引擎。
@@ -92,7 +102,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore
 | `game_config.json` | 标题/简介/出生点/初始背包金币/玩家属性 + 2 条事件规则 | 事件只在**新会话**装配，改完要 reset |
 | `scenes.json` | village / forest / cave | 出口是**单向**的，要双向得两边互写；锁门写 `locked_exits`，解锁靠事件 |
 | `items.json` | 铁剑 / 药水 / 钥匙 / 金币 | 武器 `is_weapon+damage`；消耗品 `usable+heal`；货币要 `is_currency+currency_value` |
-| `enemies.json` | slime 一只 | `reward_items` 击杀直接入包，`reward_gold` 直接加钱 |
+| `enemies.json` | slime / stone_guard（Boss）两只 | `reward_items` 击杀落在地上，`reward_gold` 直接加钱；`heavy_attack`/`_proto_brain`/`_proto_telegraphs`/`_proto_intents` 为 beat 战斗的敌人级覆盖 |
 | `npc_dialogues.json` | old_guard：greet / prep / after_victory / leave | `greeting_rules` 按序首匹配；flag 满足时入口切到 after_victory |
 
 两条事件规则串起任务线：

@@ -28,10 +28,14 @@
 #   ① 上拍蓄力成功 → 承诺 heavy（不可取消；互蓄对撞仍走这条）
 #   ② 上拍蓄力被打断 → recover
 #   ③ 上拍闪避成功 → 承诺 bash（不可取消；防「互蓄/再蓄力→再闪避」死循环）
-#   ④ 玩家「蓄力就绪」且自身 HP > 25% → dodge（躲开重击）
-#   ⑤ 玩家「蓄力就绪」且残血 → bash（重击必须能收头，不躲）
-#   ⑥ 自身 HP ≤ 25% 且玩家未蓄力 → brace（龟息）
-#   ⑦ 否则按节奏步：bash→charge→(承诺 heavy) 三拍循环
+#   ④ 玩家「蓄力就绪」→ 能躲的敌人：残血 bash（重击必须能收头）否则 dodge；
+#      躲不动的敌人（石头类）只能 bash 换血
+#   ⑤ 自身 HP ≤ 阈值且玩家未蓄力 → 按性格：brace（龟息）或 frenzy（狂暴：
+#      不蜷缩，节奏切换为更快的 frenzy_rhythm）
+#   ⑥ 否则按节奏步循环 _proto_brain.rhythm（重击由承诺位打出）
+#   决策参数按敌人数据 `_proto_brain` 配置：rhythm / frenzy_rhythm /
+#   dodge_player_charge / low_hp_mode(brace|frenzy) / low_hp_ratio；
+#   未配置的敌人（史莱姆）走默认：bash→charge、会躲重击、残血龟息。
 #   破绽拍决策器不改招——情报价值归玩家。
 #
 # 两个一拍状态：
@@ -47,7 +51,7 @@
 #   current_battle["_proto_enemy_flaw_beat"]—— 敌人破绽生效的拍序号（重击被闪避后的下一拍）
 #   current_battle["_proto_player_flaw_beat"]—— 玩家破绽生效的拍序号（重击被躲开后的下一拍）
 #   current_battle["_proto_struggle_beat"]  —— 玩家挣扎生效的拍序号（脱离失败后的下一拍）
-#   current_battle["_proto_enemy_step"]     —— 敌人节奏步：0=下拍 bash，1=下拍 charge
+#   current_battle["_proto_enemy_step"]     —— 敌人节奏步下标（循环 _proto_brain.rhythm）
 #   current_battle["_proto_enemy_promised"]—— True=上拍蓄力成功，本拍承诺重击
 #   current_battle["_proto_enemy_promised_bash"] —— True=上拍闪避，本拍承诺撞击
 #   current_battle["_proto_enemy_interrupted"] —— 上拍蓄力被玩家攻击打断，本拍喘息
@@ -102,9 +106,10 @@ TELEGRAPH_TEXT = {
 }
 
 
-def telegraph(intent: str, beat: int) -> str:
-    """按拍序给同一动作选择稳定的近义动态描述。"""
-    phrases = TELEGRAPH_TEXT.get(intent, ("它的动作让你暂时无法判断。",))
+def telegraph(intent: str, beat: int, enemy: Optional[Dict] = None) -> str:
+    """按拍序给同一动作选择稳定的近义动态描述；敌人可用 _proto_telegraphs 覆盖。"""
+    phrases = ((enemy or {}).get("_proto_telegraphs") or {}).get(intent) \
+        or TELEGRAPH_TEXT.get(intent, ("它的动作让你暂时无法判断。",))
     return phrases[(max(1, int(beat)) - 1) % len(phrases)]
 
 
@@ -271,9 +276,28 @@ def _effective_cost(cfg: Dict, battle: Dict, action: str, beat: int) -> int:
     return cost
 
 
+def _low_hp(cfg: Dict, enemy: Dict, battle: Dict) -> bool:
+    """敌人是否进入残血区间；阈值可被 _proto_brain.low_hp_ratio 覆盖。"""
+    max_hp = int(enemy.get("hp", 1))
+    raw = enemy.get("_proto_brain") or {}
+    ratio = float(raw.get("low_hp_ratio", cfg.get("low_hp_ratio", 0.25)))
+    return int(battle.get("enemy_hp", max_hp)) <= max_hp * ratio
+
+
+def _rhythm(cfg: Dict, enemy: Dict, battle: Dict) -> list:
+    """敌人节奏环（bash/charge 序列，重击由承诺位打出）；残血狂暴可换更快的环。"""
+    raw = enemy.get("_proto_brain") or {}
+    if (raw.get("low_hp_mode") == "frenzy" and raw.get("frenzy_rhythm")
+            and _low_hp(cfg, enemy, battle)):
+        return list(raw["frenzy_rhythm"])
+    return list(raw.get("rhythm") or ("bash", "charge"))
+
+
 def decide(cfg: Dict, battle: Dict, state: Dict, enemy: Dict) -> str:
     """L2 决策器：拍首纯函数，锁定敌人本拍动作。只读拍首状态，不接收玩家本拍
-    选择（AI 不得偷看改招）；无随机，同局面结果恒定。返回 INTENT_TEXT 的键。"""
+    选择（AI 不得偷看改招）；无随机，同局面结果恒定。返回 INTENT_TEXT 的键。
+    行为参数来自敌人 _proto_brain（未配置走史莱姆默认）。"""
+    raw = enemy.get("_proto_brain") or {}
     # ① 承诺：上拍蓄力成功且没被打断 → 重击必须打出
     if battle.get("_proto_enemy_promised"):
         return "heavy"
@@ -284,16 +308,19 @@ def decide(cfg: Dict, battle: Dict, state: Dict, enemy: Dict) -> str:
     if battle.get("_proto_enemy_promised_bash"):
         return "bash"
     player_charged = _charge_is_ready(cfg, battle, int(battle.get("_proto_beat", 1)))
-    max_hp = int(enemy.get("hp", 1))
-    low_hp = int(battle.get("enemy_hp", max_hp)) <= max_hp * float(cfg.get("low_hp_ratio", 0.25))
-    # ④ 玩家蓄力就绪 + 健康：躲开重击（残血不躲，否则杀不死）
+    low_hp = _low_hp(cfg, enemy, battle)
+    # ④ 玩家蓄力就绪：能躲的敌人躲开重击（残血不躲，否则杀不死）；
+    #    躲不动的敌人（石头类）只能换血反制
     if player_charged:
-        return "bash" if low_hp else "dodge"
-    # ⑤ 残血龟息：玩家没在蓄力时蜷缩，期望把普攻挡在外面
-    if low_hp:
+        if raw.get("dodge_player_charge", True):
+            return "bash" if low_hp else "dodge"
+        return "bash"
+    # ⑤ 残血：龟息性格蜷缩挡普攻；狂暴性格不蜷缩，节奏交给（更快的）环
+    if low_hp and raw.get("low_hp_mode", "brace") != "frenzy":
         return "brace"
-    # ⑥ 节奏步：0=撞击，1=蓄力（重击由承诺位打出）
-    return "charge" if int(battle.get("_proto_enemy_step", 0)) >= 1 else "bash"
+    # ⑥ 节奏步：循环 _proto_brain.rhythm（重击由承诺位打出）
+    rhythm = _rhythm(cfg, enemy, battle)
+    return rhythm[int(battle.get("_proto_enemy_step", 0)) % len(rhythm)]
 
 
 def describe(state: Dict, data: Dict) -> Optional[Dict]:
@@ -311,10 +338,13 @@ def describe(state: Dict, data: Dict) -> Optional[Dict]:
     beat = int(battle.get("_proto_beat", 1))
     intent = decide(cfg, battle, state, enemy)
     label, hint = INTENT_TEXT.get(intent, (intent, ""))
+    override = (enemy.get("_proto_intents") or {}).get(intent)
+    if isinstance(override, (list, tuple)) and len(override) == 2:
+        label, hint = override
     flaw = battle.get("_proto_enemy_flaw_beat") == beat
     player_flaw = battle.get("_proto_player_flaw_beat") == beat
     struggle = battle.get("_proto_struggle_beat") == beat
-    hidden_hint = telegraph(intent, beat)
+    hidden_hint = telegraph(intent, beat, enemy)
     if flaw:
         hidden_hint = f"你看穿了它的动作：{label}。{hint}"
     elif player_flaw:
@@ -381,6 +411,7 @@ def _enemy_damage_taken(cfg: Dict, action: str, intent: str, state: Dict,
     """按动作 effects/interactions 计算玩家本拍承伤；未配置时兼容旧公式。"""
     if intent in ("brace", "charge", "recover", "dodge"):
         return 0
+    heavy = int(enemy.get("heavy_attack", cfg.get("heavy_damage", 10)))
     if intent == "heavy":
         if action == "dodge" and _avoids_damage(cfg, action, intent):
             return 0
@@ -389,8 +420,8 @@ def _enemy_damage_taken(cfg: Dict, action: str, intent: str, state: Dict,
                                         "halve_damage_after_defense")
             if rule is not False:
                 pdef = int(state.get("player_defense", 0))
-                return max(1, int(cfg.get("heavy_damage", 10)) - pdef) // 2
-        return int(cfg.get("heavy_damage", 10))
+                return max(1, heavy - pdef) // 2
+        return heavy
     raw = max(1, int(enemy.get("attack", 1)) - int(state.get("player_defense", 0)))
     if action == "dodge" and _avoids_damage(cfg, action, intent):
         return 0
@@ -662,8 +693,9 @@ def resolve(combat_system, state: Dict, data: Dict, action: str,
     elif intent in ("heavy", "recover"):
         battle["_proto_enemy_step"] = 0
     elif intent == "bash" and not player_charged_at_lock:
-        # 节奏内的撞击（非"玩家蓄力"临时反制）→ 下拍进入蓄力
-        battle["_proto_enemy_step"] = 1
+        # 节奏内的撞击（非"玩家蓄力"临时反制）→ 推进到环内下一格
+        rhythm = _rhythm(cfg, enemy, battle)
+        battle["_proto_enemy_step"] = (int(battle.get("_proto_enemy_step", 0)) + 1) % len(rhythm)
     # brace 与临时 bash 不推进节奏步
 
     # ---------- 拍末：推进拍序号、AP 回复、过期一拍状态清理 ----------

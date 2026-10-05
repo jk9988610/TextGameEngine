@@ -36,7 +36,7 @@
   "cave": {
     "id": "cave",
     "name": "洞穴深处",
-    "description": "石门在身后缓缓合拢。洞穴尽头的石台上放着一枚闪闪发亮的金币——那就是老守卫说的宝物。",
+    "description": "石门在身后缓缓合拢。洞穴尽头的石台上放着那枚闪闪发亮的金币——一尊石之守卫正挡在石台前，胸口的核晶随着你的靠近亮了起来。",
     "exits": [
       "forest"
     ],
@@ -44,7 +44,9 @@
       "gold_coin"
     ],
     "locked_exits": {},
-    "enemies_here": [],
+    "enemies_here": [
+      "stone_guard"
+    ],
     "shop_items": []
   }
 }

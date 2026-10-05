@@ -40,7 +40,7 @@
     "cost_charge": 0,
     "cost_disengage": 2,
     "actions": {
-      "attack": {
+        "attack": {
         "label": "攻击",
         "description": "用装备造成普通武器伤害。",
         "cost": 1,

@@ -53,6 +53,8 @@
 - 原型配套固化冒烟脚本 `games/<工程>/<机制>_smoke.py`（参照
   `games/demo_minimal/proto_retreat_smoke.py`）：**长期保留、随机制迭代直接改、
   同一条命令反复跑**，禁止用完即删、下轮重新生成。阶段二抽离时其断言迁入 `qa/m*.py`。
+  **2026-10-05 起新约定**：新模块默认不再编写 smoke，试玩验收由用户负责；
+  已有 smoke 只改不删。
 - 阶段二抽离时要能做到：删掉标注代码后游戏行为不变（被通用实现替换）。
 
 ## 4. 阶段二抽离的准入条件与清单
@@ -84,6 +86,9 @@
   - 加载：`powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Game <工程名>`
   - 还原：`powershell -ExecutionPolicy Bypass -File .\tools\load_game.ps1 -Restore`
 - 改完 JSON 先离线自检：`.\.venv\Scripts\python.exe tools\validate_game_data.py games\<工程>`
+- **改 `games/<工程>/` 的 JSON 后必须重新跑 `load_game.ps1 -Game <工程>` 再重启**——
+  app.py 只读 `game_data/` 副本，源目录改动不会自动生效（2026-10-05 踩过：Boss 加了
+  但洞穴看不到）。proto_*.py 代码不受此影响（import 自源目录）。
 - 切换工程/改了启动期数据后**必须重启 app.py**（数据只在启动时读入内存）。
 - 访问：玩 `http://127.0.0.1:5000/static/index.html`；
   编辑 `http://127.0.0.1:5000/static/editor.html`。
